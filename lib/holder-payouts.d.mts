@@ -1,0 +1,51 @@
+export const HOLDER_PAYOUT_POLICY: Readonly<{
+  intervalHours: number;
+  chunkSize: number;
+  maxChunks: number;
+  expirySlots: bigint;
+  minPayout: bigint;
+  minPayoutNewAccount: bigint;
+}>;
+export const INCINERATOR: string;
+export type RawTokenAccount = { owner: string; amount: bigint; state: number; mint?: string };
+export type EligibleHolder = { wallet: string; tokenBalance: bigint };
+export type Payout = EligibleHolder & { reward: bigint; newAccount: boolean };
+export type PayoutChunk = { index: number; entries: Payout[]; leaf: Buffer; proof: Buffer[] };
+export type HolderEpochPlan = {
+  mint: string;
+  epoch: bigint;
+  snapshotSlot: bigint;
+  snapshotHash: Buffer;
+  holderCount: number;
+  totalBalance: bigint;
+  available: bigint;
+  budget: bigint;
+  fundedAmount: bigint;
+  dust: bigint;
+  payouts: Payout[];
+  carryOut: Map<string, bigint>;
+  chunks: PayoutChunk[];
+  root: Buffer | null;
+};
+export function eligibleHolders(accounts: RawTokenAccount[], exclude?: string[]): EligibleHolder[];
+export function decodeTokenAccount(data: Buffer): (RawTokenAccount & { mint: string }) | null;
+export function chunkLeaf(mint: string, epoch: bigint, chunkIndex: number, entries: { wallet: string; tokenBalance: bigint; reward: bigint }[]): Buffer;
+export function verifyChunkProof(leaf: Buffer, proof: Buffer[], root: Buffer): boolean;
+export function planHolderEpoch(input: {
+  mint: string;
+  epoch: bigint;
+  snapshotSlot: number | bigint;
+  available: bigint;
+  holders: EligibleHolder[];
+  carry?: Map<string, bigint>;
+  hasHypeAccount: (wallet: string) => boolean;
+  policy?: typeof HOLDER_PAYOUT_POLICY;
+}): HolderEpochPlan;
+export const LAMPORTS: Readonly<{ signature: bigint; hypeAccountRent: bigint; rentPerByte: bigint }>;
+export function payoutCost(input: {
+  payouts: number;
+  newAccounts: number;
+  chunkSize?: number;
+  accountsPerCreateTx?: number;
+  priorityLamportsPerTx?: bigint;
+}): { transactions: number; fees: bigint; accountRent: bigint; total: bigint; refundableEpochRent: bigint };

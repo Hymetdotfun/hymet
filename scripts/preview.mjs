@@ -1,0 +1,16 @@
+import './check-native-deps.mjs';
+import net from 'node:net';
+import {spawn} from 'node:child_process';
+import {createRequire} from 'node:module';
+import {mkdir,writeFile} from 'node:fs/promises';
+const require=createRequire(import.meta.url);
+const server=net.createServer();
+await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+const port=server.address().port;
+await new Promise(resolve=>server.close(resolve));
+console.log(`HYMET isolated preview: http://127.0.0.1:${port}`);
+const tsconfig=`work/tsconfig.preview-${port}.json`;
+await mkdir('work',{recursive:true});
+await writeFile(tsconfig,JSON.stringify({extends:'../tsconfig.json',include:['../next-env.d.ts','../app/**/*.ts','../app/**/*.tsx','../components/**/*.tsx','../lib/**/*.ts',`../next-preview-${port}/types/**/*.ts`,`../next-preview-${port}/dev/types/**/*.ts`],exclude:['../node_modules']},null,2));
+const child=spawn(process.execPath,[require.resolve('next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{stdio:'inherit',env:{...process.env,HYMET_PREVIEW_DIR:`next-preview-${port}`,HYMET_PREVIEW_TSCONFIG:tsconfig}});
+child.on('exit',code=>{process.exitCode=code??1;});

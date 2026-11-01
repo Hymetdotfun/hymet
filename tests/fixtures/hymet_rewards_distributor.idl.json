@@ -1,0 +1,2304 @@
+{
+  "address": "9X9fnj4Uh9WC9nmxCahTVsixHZ6VGxNpMesuGhK239Px",
+  "metadata": {
+    "name": "hymet_rewards_distributor",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Noncustodial HYPE fee settlement and passive holder rewards for HYMET"
+  },
+  "instructions": [
+    {
+      "name": "claim_creator",
+      "discriminator": [
+        231,
+        240,
+        197,
+        249,
+        244,
+        10,
+        21,
+        59
+      ],
+      "accounts": [
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "fee_pool"
+          ]
+        },
+        {
+          "name": "hype_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hype_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "creator_hype",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hype_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "hype_mint",
+          "address": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_holder_epoch",
+      "docs": [
+        "Close a fully paid epoch, or an expired one. Any unpaid reserve returns to",
+        "the holder pool (never to HYMET or the creator); rent returns to the authority."
+      ],
+      "discriminator": [
+        111,
+        160,
+        122,
+        220,
+        80,
+        246,
+        29,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "epoch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  112,
+                  111,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "account",
+                "path": "epoch.number",
+                "account": "RewardEpoch"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_fee_pool",
+      "docs": [
+        "The PDA is DBC's feeClaimer and the owner of the partner DAMM v2 position.",
+        "The program intentionally has no general-purpose token withdrawal method."
+      ],
+      "discriminator": [
+        181,
+        227,
+        61,
+        52,
+        198,
+        41,
+        25,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "hype_mint",
+          "address": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        },
+        {
+          "name": "dbc_pool"
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "base_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "hype_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hype_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "creator_bps_of_remaining",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "distribute_holder_chunk",
+      "docs": [
+        "Push one batch (\"chunk\") of a funded epoch to holders. Permissionless: the",
+        "Merkle root fixed at funding decides every recipient and amount, each HYPE",
+        "destination must be the wallet's canonical HYPE ATA, and the epoch bitmap",
+        "lets each chunk pay exactly once. Holders never sign or claim."
+      ],
+      "discriminator": [
+        85,
+        114,
+        75,
+        172,
+        10,
+        242,
+        57,
+        198
+      ],
+      "accounts": [
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "epoch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  112,
+                  111,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "account",
+                "path": "epoch.number",
+                "account": "RewardEpoch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hype_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hype_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "hype_mint",
+          "address": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Any keeper; pays only the transaction fee."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "chunk_index",
+          "type": "u32"
+        },
+        {
+          "name": "entries",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "PayoutEntry"
+              }
+            }
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "vec": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "fund_holder_epoch",
+      "docs": [
+        "Reserve only already-collected partner HYPE for one funded snapshot."
+      ],
+      "discriminator": [
+        233,
+        189,
+        184,
+        78,
+        144,
+        103,
+        163,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "epoch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  112,
+                  111,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_number"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_number",
+          "type": "u64"
+        },
+        {
+          "name": "snapshot_slot",
+          "type": "u64"
+        },
+        {
+          "name": "snapshot_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "merkle_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "funded_amount",
+          "type": "u64"
+        },
+        {
+          "name": "chunk_count",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Only the program's upgrade authority may create the one-time config, so the",
+            "config PDA cannot be front-run between deployment and initialization."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "platform_wallet"
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program",
+          "address": "9X9fnj4Uh9WC9nmxCahTVsixHZ6VGxNpMesuGhK239Px"
+        },
+        {
+          "name": "program_data"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "snapshot_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "register_damm_pool",
+      "docs": [
+        "Creator (or the snapshot authority) registers the migration destination. DAMM v2 validates that each",
+        "claimed position belongs to this pool and that its NFT signer is the PDA."
+      ],
+      "discriminator": [
+        23,
+        229,
+        50,
+        183,
+        9,
+        205,
+        59,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "registrar",
+          "docs": [
+            "The creator, or HYMET's snapshot authority so the payout keeper can continue after graduation."
+          ],
+          "signer": true
+        },
+        {
+          "name": "damm_pool"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_snapshot_authority",
+      "docs": [
+        "Rotate the snapshot authority (the payout keeper key) if it is lost or compromised.",
+        "Only the program's current upgrade authority may call it (same ProgramData check as",
+        "`initialize`); the new key gains only epoch funding/closing and DAMM registration."
+      ],
+      "discriminator": [
+        136,
+        144,
+        237,
+        7,
+        103,
+        248,
+        149,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program",
+          "address": "9X9fnj4Uh9WC9nmxCahTVsixHZ6VGxNpMesuGhK239Px"
+        },
+        {
+          "name": "program_data"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "settle_damm_v2",
+      "docs": [
+        "Claim quote-token (HYPE) fees from the registered DAMM v2 partner position.",
+        "The 14 remaining accounts follow claimPositionFee with signer omitted."
+      ],
+      "discriminator": [
+        46,
+        11,
+        59,
+        157,
+        143,
+        163,
+        201,
+        179
+      ],
+      "accounts": [
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "base_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "hype_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hype_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "platform_hype",
+          "writable": true
+        },
+        {
+          "name": "hype_mint",
+          "address": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        },
+        {
+          "name": "position_nft"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "caller",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "settle_dbc",
+      "docs": [
+        "Claim DBC partner fees. The 13 remaining accounts follow the pinned",
+        "claimTradingFee IDL with feeClaimer omitted; the program inserts its PDA."
+      ],
+      "discriminator": [
+        74,
+        122,
+        64,
+        122,
+        188,
+        51,
+        138,
+        160
+      ],
+      "accounts": [
+        {
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "base_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "fee_pool.token_mint",
+                "account": "FeePool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "hype_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "fee_pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hype_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "platform_hype",
+          "writable": true
+        },
+        {
+          "name": "hype_mint",
+          "address": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "caller",
+          "signer": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "DistributorConfig",
+      "discriminator": [
+        1,
+        212,
+        77,
+        40,
+        77,
+        148,
+        78,
+        65
+      ]
+    },
+    {
+      "name": "FeePool",
+      "discriminator": [
+        172,
+        38,
+        77,
+        146,
+        148,
+        5,
+        51,
+        242
+      ]
+    },
+    {
+      "name": "RewardEpoch",
+      "discriminator": [
+        214,
+        103,
+        106,
+        97,
+        14,
+        4,
+        33,
+        156
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CreatorClaimed",
+      "discriminator": [
+        118,
+        206,
+        30,
+        219,
+        62,
+        164,
+        54,
+        200
+      ]
+    },
+    {
+      "name": "FeesSettled",
+      "discriminator": [
+        67,
+        117,
+        237,
+        13,
+        182,
+        185,
+        211,
+        44
+      ]
+    },
+    {
+      "name": "HolderEpochClosed",
+      "discriminator": [
+        6,
+        37,
+        177,
+        218,
+        2,
+        131,
+        230,
+        171
+      ]
+    },
+    {
+      "name": "HolderEpochFunded",
+      "discriminator": [
+        255,
+        28,
+        180,
+        173,
+        144,
+        23,
+        182,
+        115
+      ]
+    },
+    {
+      "name": "HolderPaid",
+      "discriminator": [
+        123,
+        31,
+        51,
+        115,
+        81,
+        117,
+        179,
+        144
+      ]
+    },
+    {
+      "name": "MigrationPoolRegistered",
+      "discriminator": [
+        42,
+        2,
+        209,
+        196,
+        16,
+        55,
+        81,
+        20
+      ]
+    },
+    {
+      "name": "SnapshotAuthorityChanged",
+      "discriminator": [
+        180,
+        176,
+        22,
+        202,
+        45,
+        58,
+        32,
+        30
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidRecipient",
+      "msg": "Recipient configuration is invalid"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidMint",
+      "msg": "Token mint is not the fixed HYPE quote mint or is not supported"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidSplit",
+      "msg": "Distribution split is outside 0-100 percent"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidPool",
+      "msg": "Pool or migration state is invalid"
+    },
+    {
+      "code": 6004,
+      "name": "AlreadyRegistered",
+      "msg": "A DAMM migration pool is already registered"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidCpiAccounts",
+      "msg": "Fee CPI account list does not match the pinned Meteora interface"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidVault",
+      "msg": "Fee vault account does not match this token pool"
+    },
+    {
+      "code": 6007,
+      "name": "NonQuoteFee",
+      "msg": "A non-quote token fee was returned; settlement was rolled back"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidTokenProgram",
+      "msg": "The supplied token program is not the supported SPL Token program"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidProgram",
+      "msg": "The supplied external program is not the pinned Meteora program"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidPosition",
+      "msg": "The DAMM position NFT is not held by the distributor PDA"
+    },
+    {
+      "code": 6011,
+      "name": "Unauthorized",
+      "msg": "Snapshot publisher is not authorized"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidEpoch",
+      "msg": "Reward epoch parameters are invalid"
+    },
+    {
+      "code": 6013,
+      "name": "InsufficientFunds",
+      "msg": "The funded HYPE balance is insufficient"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidProof",
+      "msg": "Merkle proof is invalid"
+    },
+    {
+      "code": 6015,
+      "name": "OverClaim",
+      "msg": "Claim exceeds the funded epoch amount"
+    },
+    {
+      "code": 6016,
+      "name": "NothingToClaim",
+      "msg": "No creator HYPE fees are claimable"
+    },
+    {
+      "code": 6017,
+      "name": "Accounting",
+      "msg": "Accounting overflow or invariant failure"
+    },
+    {
+      "code": 6018,
+      "name": "Insolvent",
+      "msg": "Vault does not cover all recorded liabilities"
+    },
+    {
+      "code": 6019,
+      "name": "NotUpgradeAuthority",
+      "msg": "Only the program upgrade authority may initialize the distributor"
+    },
+    {
+      "code": 6020,
+      "name": "AlreadyPaid",
+      "msg": "This payout chunk was already paid"
+    },
+    {
+      "code": 6021,
+      "name": "EpochActive",
+      "msg": "Epoch is still paying out and has not expired"
+    }
+  ],
+  "types": [
+    {
+      "name": "CreatorClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DistributorConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "platform_wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeePool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "dbc_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "damm_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_bps_of_remaining",
+            "type": "u16"
+          },
+          {
+            "name": "creator_claimable",
+            "type": "u64"
+          },
+          {
+            "name": "holder_unallocated",
+            "type": "u64"
+          },
+          {
+            "name": "holder_reserved",
+            "type": "u64"
+          },
+          {
+            "name": "next_epoch",
+            "type": "u64"
+          },
+          {
+            "name": "total_settled",
+            "type": "u64"
+          },
+          {
+            "name": "total_platform",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "last_snapshot_slot",
+            "docs": [
+              "Appended so earlier field offsets are unchanged; epochs must use newer snapshots."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeesSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "source",
+            "type": "u8"
+          },
+          {
+            "name": "distributable",
+            "type": "u64"
+          },
+          {
+            "name": "hymet",
+            "type": "u64"
+          },
+          {
+            "name": "creator",
+            "type": "u64"
+          },
+          {
+            "name": "holders",
+            "type": "u64"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HolderEpochClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "epoch",
+            "type": "u64"
+          },
+          {
+            "name": "paid_amount",
+            "type": "u64"
+          },
+          {
+            "name": "returned_amount",
+            "type": "u64"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HolderEpochFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "epoch",
+            "type": "u64"
+          },
+          {
+            "name": "epoch_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot_slot",
+            "type": "u64"
+          },
+          {
+            "name": "snapshot_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "merkle_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "funded_amount",
+            "type": "u64"
+          },
+          {
+            "name": "chunk_count",
+            "type": "u32"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HolderPaid",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "epoch",
+            "type": "u64"
+          },
+          {
+            "name": "chunk",
+            "type": "u32"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MigrationPoolRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PayoutEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token_balance",
+            "type": "u64"
+          },
+          {
+            "name": "reward",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RewardEpoch",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "fee_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "number",
+            "type": "u64"
+          },
+          {
+            "name": "snapshot_slot",
+            "type": "u64"
+          },
+          {
+            "name": "snapshot_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "merkle_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "funded_amount",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_amount",
+            "type": "u64"
+          },
+          {
+            "name": "chunk_count",
+            "type": "u32"
+          },
+          {
+            "name": "paid_chunks",
+            "type": "u32"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "paid_bitmap",
+            "type": "bytes"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SnapshotAuthorityChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "previous",
+            "type": "pubkey"
+          },
+          {
+            "name": "current",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

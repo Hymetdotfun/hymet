@@ -1,0 +1,9 @@
+{
+  "name": "bigint-buffer",
+  "version": "1.1.5-hymet.1",
+  "description": "HYMET pure-JS replacement for bigint-buffer 1.1.5 (GHSA-3gc7-fjrx-p6mg). No native addon; bounds-checked conversions.",
+  "main": "dist/node.js",
+  "browser": "dist/node.js",
+  "types": "dist/index.d.ts",
+  "license": "Apache-2.0"
+}

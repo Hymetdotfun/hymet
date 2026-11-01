@@ -1,0 +1,16 @@
+import { NextResponse } from "next/server";
+import { PublicKey } from "@solana/web3.js";
+import { query, databaseConfigured } from "../../../../lib/db";
+import { HYPE_MINT } from "../../../../lib/quote-assets";
+export const runtime="nodejs";
+export async function GET(_req:Request,{params}:{params:Promise<{wallet:string}>}){
+  const {wallet}=await params;try{new PublicKey(wallet)}catch{return NextResponse.json({error:"Invalid wallet address"},{status:400})}
+  if(!databaseConfigured())return NextResponse.json({error:"Creator index is not configured",indexed:false},{status:503,headers:{"Cache-Control":"no-store"}});
+  try{
+    const tokens=await query(`SELECT mint_address AS mint,name,ticker,artwork_uri AS image_url,status,launch_signature,created_at FROM tokens WHERE creator_wallet=$1 AND quote_mint=$2 ORDER BY created_at DESC`,[wallet,HYPE_MINT.toBase58()]);
+    const settlements=await query<{creator_hype:string;claimed_hype:string;holder_hype:string;hymet_hype:string;claim_count:string}>(`SELECT COALESCE((SELECT sum(s.creator_amount) FROM fee_settlements s JOIN tokens t USING(mint_address) WHERE t.creator_wallet=$1 AND s.quote_mint=$2),0)::text AS creator_hype,COALESCE((SELECT sum(c.amount) FROM claims c JOIN tokens t USING(mint_address) WHERE t.creator_wallet=$1 AND c.wallet_address=$1 AND c.claim_type='creator' AND c.quote_mint=$2),0)::text AS claimed_hype,COALESCE((SELECT sum(e.reward_amount-e.claimed_amount) FROM holder_reward_entitlements e WHERE e.wallet_address=$1 AND e.quote_mint=$2),0)::text AS holder_hype,COALESCE((SELECT sum(s.hymet_amount) FROM fee_settlements s JOIN tokens t USING(mint_address) WHERE t.creator_wallet=$1 AND s.quote_mint=$2),0)::text AS hymet_hype,(SELECT count(*)::text FROM claims c JOIN tokens t USING(mint_address) WHERE (t.creator_wallet=$1 OR c.wallet_address=$1) AND c.quote_mint=$2) AS claim_count`,[wallet,HYPE_MINT.toBase58()]);
+    const indexed=await query<{settlement_count:string;claim_count:string}>(`SELECT (SELECT count(*)::text FROM fee_settlements s JOIN tokens t USING(mint_address) WHERE t.creator_wallet=$1 AND s.quote_mint=$2) AS settlement_count,(SELECT count(*)::text FROM claims c JOIN tokens t USING(mint_address) WHERE (t.creator_wallet=$1 OR c.wallet_address=$1) AND c.quote_mint=$2) AS claim_count`,[wallet,HYPE_MINT.toBase58()]);
+    const history=await query(`SELECT t.launch_signature AS signature,'launch' AS type,t.mint_address AS mint,t.name,t.created_at AS confirmed_at FROM tokens t WHERE t.creator_wallet=$1 UNION ALL SELECT c.transaction_signature,'claim:'||c.claim_type,c.mint_address,t.name,c.claimed_at FROM claims c JOIN tokens t USING(mint_address) WHERE c.wallet_address=$1 ORDER BY confirmed_at DESC LIMIT 50`,[wallet]);
+    return NextResponse.json({wallet,indexed:true,tokens:tokens.rows.map(({image_url,...r})=>({...r,imageUrl:image_url})),fees:settlements.rows[0],feesIndexed:Number(indexed.rows[0]?.settlement_count||0)>0,claimsIndexed:Number(indexed.rows[0]?.claim_count||0)>0,history:history.rows},{headers:{"Cache-Control":"no-store"}});
+  }catch{return NextResponse.json({error:"Creator index is temporarily unavailable",indexed:false},{status:503,headers:{"Cache-Control":"no-store"}})}
+}
