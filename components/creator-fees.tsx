@@ -178,10 +178,14 @@ function FeePanel({
   const hasDbcFees = Boolean(view && (view.base > 0n || view.quote > 0n));
   // After graduation the creator earns on the DAMM v2 position; the DBC card stays only while leftover curve fees exist.
   const showDbcCard = !view || !graduated || hasDbcFees;
+  // Distributor launches route the whole creator-controlled share through the HYMET distributor (DBC creator fee 0%).
+  const distributorLaunch = Boolean(view && view.creatorShare === 0 && !hasDbcFees);
   const note = !owner
     ? "Connect Phantom from the navbar to view and claim fees."
     : !view
       ? "Loading verified fees…"
+      : distributorLaunch
+        ? "This launch pays creator and holder shares through the HYMET distributor. Claim your creator share under Your Launch Pools → Claim creator fees."
       : owner !== view.creator
         ? "The connected wallet is not this token’s on-chain creator."
         : !view.supported
@@ -301,9 +305,9 @@ function FeePanel({
           ticker={tokenSymbol}
           imageUrl={imageUrl}
           stage={graduated ? "Graduated · Remaining bonding-curve fees" : "Bonding curve · Creator fees"}
-          amount={hypeAvailable === undefined ? undefined : hypeAvailable + " HYPE"}
+          amount={distributorLaunch ? "Paid via distributor" : hypeAvailable === undefined ? undefined : hypeAvailable + " HYPE"}
           note={note}
-          action={view && !review ? { label: hasDbcFees ? "Claim Creator Fees" : "No fees to claim", disabled: busy || !canClaim, onClick: () => act(prepareClaim) } : undefined}
+          action={view && !review && !distributorLaunch ? { label: hasDbcFees ? "Claim Creator Fees" : "No fees to claim", disabled: busy || !canClaim, onClick: () => act(prepareClaim) } : undefined}
           advanced={advanced}
         >
           {review && (

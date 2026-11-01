@@ -131,6 +131,7 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker }: Props)
       ) : (
         <div className="trade-review" role="region" aria-label="Swap review">
           <small>You pay <b>{amount(plan.amountIn, plan.inDecimals)} {inLabel}</b></small>
+          {plan.requestedIn !== undefined && <small>This buy completes the bonding curve; the unused {amount(plan.requestedIn - plan.amountIn, plan.inDecimals)} {inLabel} stays in your wallet.</small>}
           <small>Expected <b>{amount(plan.expectedOut, plan.outDecimals)} {outLabel}</b> · minimum <b>{amount(plan.minimumOut, plan.outDecimals)} {outLabel}</b> ({plan.slippageBps / 100}% slippage)</small>
           <small>Trading fee {amount(plan.tradingFee + plan.protocolFee, 9)} HYPE, including {amount(plan.protocolFee, 9)} HYPE in Meteora protocol fees</small>
           <small>Network fee {sol(plan.networkFee)}{plan.rent > 0n ? ` · new token account rent ${sol(plan.rent)}` : ""}</small>

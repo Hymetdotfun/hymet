@@ -144,7 +144,7 @@ export default function DammFees({ dbc, network, tokenName, tokenSymbol, imageUr
       <section className="creator-claim damm-claim-section" aria-label="DAMM v2 position fees">
         <EarningsCard
           venue="DAMM v2" name={name} ticker={tokenSymbol} imageUrl={imageUrl} stage={stage}
-          note={!owner ? "Connect Phantom from the navbar to check position fees." : !view ? (error ? "Position fees could not be verified." : "Checking your DAMM v2 position…") : "No DAMM v2 position owned by this wallet."}
+          note={!owner ? "Connect Phantom from the navbar to check position fees." : !view ? (error ? "Position fees could not be verified." : "Checking your DAMM v2 position…") : dbc.creatorShare === 0 ? "This launch’s DAMM v2 position belongs to the HYMET distributor, which pays creator and holder shares. Claim your creator share under Your Launch Pools → Claim creator fees." : "No DAMM v2 position owned by this wallet."}
           advanced={history}
         >{footer}</EarningsCard>
       </section>

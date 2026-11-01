@@ -1,7 +1,7 @@
 // HYPE <-> token swaps on a verified HYMET Meteora DBC pool (before graduation). Builds an unsigned transaction
 // for Phantom; executeWalletOperation performs the signed simulation, broadcast, HTTP confirmation and journaling.
 import { Connection, PublicKey, ComputeBudgetProgram, SYSVAR_CLOCK_PUBKEY, type Transaction } from "@solana/web3.js";
-import { DynamicBondingCurveClient, DYNAMIC_BONDING_CURVE_PROGRAM_ID, type VirtualPool, type PoolConfig } from "@meteora-ag/dynamic-bonding-curve-sdk";
+import { DynamicBondingCurveClient, DYNAMIC_BONDING_CURVE_PROGRAM_ID, SwapMode, type VirtualPool, type PoolConfig } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { getAssociatedTokenAddressSync, unpackAccount, unpackMint, TOKEN_PROGRAM_ID, ACCOUNT_SIZE } from "@solana/spl-token";
 import BN from "bn.js";
 import { HYPE_MINT } from "./quote-assets";
@@ -19,6 +19,8 @@ export type SwapPlan = {
   lastValidBlockHeight: number;
   side: SwapSide;
   amountIn: bigint;
+  /** Set when a buy fills the bonding curve: only amountIn is spent, the rest of this stays in the wallet. */
+  requestedIn?: bigint;
   expectedOut: bigint;
   minimumOut: bigint;
   tradingFee: bigint;
@@ -86,6 +88,20 @@ export async function tokenBalance(c: Connection, owner: PublicKey, mint: Public
   return { address, exists: true, amount: a.amount };
 }
 
+/**
+ * Buys use PartialFill: identical to an exact-in buy until the curve's end, where the program fills exactly to the
+ * migration point and the unused HYPE stays with the buyer (an exact-in buy past the end would fail). Sells are exact-in.
+ */
+function dbcQuote(sdk: DynamicBondingCurveClient, virtualPool: VirtualPool, config: PoolConfig, sell: boolean, amountIn: bigint, slippageBps: number, currentPoint: BN) {
+  const big = (v: BN | undefined) => BigInt((v ?? new BN(0)).toString());
+  if (sell) {
+    const q = sdk.pool.swapQuote({ virtualPool, config, swapBaseForQuote: true, amountIn: new BN(amountIn.toString()), slippageBps, hasReferral: false, eligibleForFirstSwapWithMinFee: false, currentPoint });
+    return { spentIn: amountIn, expectedOut: big(q.outputAmount), minimumOut: big(q.minimumAmountOut), tradingFee: big(q.tradingFee), protocolFee: big(q.protocolFee) };
+  }
+  const q = sdk.pool.swapQuote2({ virtualPool, config, swapBaseForQuote: false, swapMode: SwapMode.PartialFill, amountIn: new BN(amountIn.toString()), slippageBps, hasReferral: false, eligibleForFirstSwapWithMinFee: false, currentPoint });
+  return { spentIn: big(q.includedFeeInputAmount), expectedOut: big(q.outputAmount), minimumOut: big(q.minimumAmountOut), tradingFee: big(q.tradingFee), protocolFee: big(q.protocolFee) };
+}
+
 export async function prepareDbcSwap(
   c: Connection,
   p: { mint: string; pool: string; wallet: PublicKey; side: SwapSide; amount: string; slippageBps: number; platform: PublicKey },
@@ -103,10 +119,12 @@ export async function prepareDbcSwap(
   if (source.amount < amountIn) throw Error(`Insufficient ${sell ? "token" : "HYPE"} balance`);
   // Activation type 1 = timestamp, otherwise slot; the quote must use the same clock as the program.
   const currentPoint = new BN((await chainClock(c))[config.activationType === 1 ? "unixTimestamp" : "slot"].toString());
-  const quote = sdk.pool.swapQuote({ virtualPool, config, swapBaseForQuote: sell, amountIn: new BN(amountIn.toString()), slippageBps: p.slippageBps, hasReferral: false, eligibleForFirstSwapWithMinFee: false, currentPoint });
-  const expectedOut = BigInt(quote.outputAmount.toString()), minimumOut = BigInt(quote.minimumAmountOut.toString());
-  if (expectedOut <= 0n || minimumOut <= 0n) throw Error("Amount is too small to produce any output");
-  const tx = await sdk.pool.swap({ owner: p.wallet, pool, amountIn: new BN(amountIn.toString()), minimumAmountOut: new BN(minimumOut.toString()), swapBaseForQuote: sell, referralTokenAccount: null });
+  const quote = dbcQuote(sdk, virtualPool, config, sell, amountIn, p.slippageBps, currentPoint);
+  const { expectedOut, minimumOut } = quote;
+  if (expectedOut <= 0n || minimumOut <= 0n || quote.spentIn <= 0n) throw Error("Amount is too small to produce any output");
+  const tx = sell
+    ? await sdk.pool.swap({ owner: p.wallet, pool, amountIn: new BN(amountIn.toString()), minimumAmountOut: new BN(minimumOut.toString()), swapBaseForQuote: true, referralTokenAccount: null })
+    : await sdk.pool.swap2({ owner: p.wallet, pool, swapMode: SwapMode.PartialFill, amountIn: new BN(amountIn.toString()), minimumAmountOut: new BN(minimumOut.toString()), swapBaseForQuote: false, referralTokenAccount: null });
   if (!tx.instructions.some((ix) => ix.programId.equals(ComputeBudgetProgram.programId)))
     tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 }));
   const block = await c.getLatestBlockhash("confirmed");
@@ -122,11 +140,12 @@ export async function prepareDbcSwap(
     tx,
     lastValidBlockHeight: block.lastValidBlockHeight,
     side: p.side,
-    amountIn,
+    amountIn: quote.spentIn,
+    requestedIn: quote.spentIn < amountIn ? amountIn : undefined,
     expectedOut,
     minimumOut,
-    tradingFee: BigInt(quote.tradingFee.toString()),
-    protocolFee: BigInt(quote.protocolFee.toString()),
+    tradingFee: quote.tradingFee,
+    protocolFee: quote.protocolFee,
     inDecimals,
     outDecimals,
     networkFee: BigInt(fee),
@@ -163,6 +182,6 @@ export async function quoteDbcSwap(
   const amountIn = units(p.amount, sell ? decimals : 9);
   if (amountIn <= 0n) throw Error("Enter an amount greater than zero");
   const currentPoint = new BN((await chainClock(c))[config.activationType === 1 ? "unixTimestamp" : "slot"].toString());
-  const q = sdk.pool.swapQuote({ virtualPool, config, swapBaseForQuote: sell, amountIn: new BN(amountIn.toString()), slippageBps: p.slippageBps, hasReferral: false, eligibleForFirstSwapWithMinFee: false, currentPoint });
-  return { expectedOut: BigInt(q.outputAmount.toString()), minimumOut: BigInt(q.minimumAmountOut.toString()), fee: BigInt(q.tradingFee.toString()) + BigInt(q.protocolFee.toString()), outDecimals: sell ? 9 : decimals };
+  const q = dbcQuote(sdk, virtualPool, config, sell, amountIn, p.slippageBps, currentPoint);
+  return { expectedOut: q.expectedOut, minimumOut: q.minimumOut, fee: q.tradingFee + q.protocolFee, outDecimals: sell ? 9 : decimals, spentIn: q.spentIn };
 }
