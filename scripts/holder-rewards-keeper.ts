@@ -6,6 +6,7 @@
 //      MAINNET_RPC_URL (or HYMET_KEEPER_RPC_URL for a local validator / Devnet).
 //      HYMET_KEEPER_MINTS (optional, comma-separated): only these mints, e.g. an instant-graduation run from
 //      scripts/graduation-watcher.mjs. Unset = every distributor token (the periodic run).
+//      HYMET_KEEPER_PRIORITY_MICROLAMPORTS (optional): compute-unit price for keeper transactions (default 20000; 0 = none).
 // The keypair is read from disk and never printed.
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -18,7 +19,7 @@ import { verifyDistributorDeployment } from "../lib/distributor-engine";
 import { runHolderPayouts } from "../lib/holder-keeper";
 import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
-import { keeperFetch } from "../lib/keeper-rpc";
+import { KEEPER_PRIORITY_MICROLAMPORTS, keeperFetch, withPriorityFee } from "../lib/keeper-rpc";
 
 const RPC_TIMEOUT_MS = 30_000, REINDEX_TIMEOUT_MS = 180_000;
 
@@ -42,6 +43,9 @@ async function main() {
   const minArg = process.argv.find((a) => a.startsWith("--min-payout="))?.slice("--min-payout=".length);
   if (minArg !== undefined && !/^[1-9]\d{0,17}$/.test(minArg)) throw Error("--min-payout must be a positive integer of HYPE base units");
   const policy = minArg ? { ...HOLDER_PAYOUT_POLICY, minPayout: BigInt(minArg), minPayoutNewAccount: BigInt(minArg) } : HOLDER_PAYOUT_POLICY;
+  const feeText = process.env.HYMET_KEEPER_PRIORITY_MICROLAMPORTS;
+  if (feeText !== undefined && !/^\d{1,9}$/.test(feeText)) throw Error("HYMET_KEEPER_PRIORITY_MICROLAMPORTS must be a non-negative integer");
+  const priorityFee = feeText === undefined ? KEEPER_PRIORITY_MICROLAMPORTS : Number(feeText);
   const programText = process.env.HYMET_DISTRIBUTOR_PROGRAM_ID, keypairPath = process.env.HYMET_KEEPER_KEYPAIR;
   if (!process.env.DATABASE_URL || !programText || !keypairPath) throw Error("Set DATABASE_URL, HYMET_DISTRIBUTOR_PROGRAM_ID and HYMET_KEEPER_KEYPAIR");
   // Bounded RPC requests: a stalled request fails the token's run (every step is resumable from chain state) instead of
@@ -77,13 +81,19 @@ async function main() {
       log(`simulated ${label}`, { err: sim.value.err, units: sim.value.unitsConsumed });
       if (sim.value.err) throw Error(`${label} simulation failed: ${JSON.stringify(sim.value.err)}`);
     };
+    // Priority fee plus rebroadcast of the same signed bytes until confirmed or the blockhash expires, so a dropped
+    // transaction does not defer settlement or payouts to the next run. Same signature: it can land at most once.
     const sendTx = async (tx: Transaction, label: string, extraSigners: Keypair[] = []) => {
+      withPriorityFee(tx, priorityFee);
       const block = await connection.getLatestBlockhash("confirmed");
       tx.feePayer = authority.publicKey;
       tx.recentBlockhash = block.blockhash;
       tx.sign(authority, ...extraSigners);
-      const signature = await connection.sendRawTransaction(tx.serialize(), { preflightCommitment: "confirmed", maxRetries: 0 });
-      const outcome = await awaitSignature(connection, signature, block.lastValidBlockHeight);
+      const raw = tx.serialize();
+      const signature = await connection.sendRawTransaction(raw, { preflightCommitment: "confirmed", maxRetries: 0 });
+      const outcome = await awaitSignature(connection, signature, block.lastValidBlockHeight, {
+        rebroadcast: () => connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }),
+      });
       log(label, { signature, state: outcome.state });
       if (outcome.state !== "confirmed") throw Error(`${label} ${outcome.state}: ${signature}`);
       return signature;

@@ -44,6 +44,20 @@ describe("HTTP-only signature confirmation", () => {
     expect(await awaitSignature(as(r), sig, 100, noSleep)).toEqual({ state: "confirmed" });
   });
 
+  it("rebroadcasts only while the signature is unseen and stops once it is seen", async () => {
+    const r = rpc([null, null, { err: null, confirmationStatus: "processed" }, { err: null, confirmationStatus: "confirmed" }], [50]);
+    const rebroadcast = vi.fn(async () => { throw Error("node busy"); }); // errors never decide the outcome
+    expect(await awaitSignature(as(r), sig, 100, { ...noSleep, maxWaitMs: 100, rebroadcast })).toEqual({ state: "confirmed" });
+    expect(rebroadcast).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not rebroadcast once the blockhash has expired", async () => {
+    const r = rpc([null], [101]);
+    const rebroadcast = vi.fn(async () => undefined);
+    expect(await awaitSignature(as(r), sig, 100, { ...noSleep, rebroadcast })).toEqual({ state: "expired" });
+    expect(rebroadcast).not.toHaveBeenCalled();
+  });
+
   it("returns unresolved, not expired, while the blockhash is still valid", async () => {
     const r = rpc([null], [50]);
     expect(await awaitSignature(as(r), sig, 100, noSleep)).toEqual({ state: "unresolved" });

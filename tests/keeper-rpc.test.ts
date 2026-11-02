@@ -1,5 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
-import { keeperFetch } from "../lib/keeper-rpc";
+import { ComputeBudgetProgram, Keypair, SystemProgram, Transaction } from "@solana/web3.js";
+import { keeperFetch, withPriorityFee } from "../lib/keeper-rpc";
+
+describe("keeper priority fee", () => {
+  const transfer = () => SystemProgram.transfer({ fromPubkey: Keypair.generate().publicKey, toPubkey: Keypair.generate().publicKey, lamports: 1 });
+  it("adds one compute-unit price ahead of the existing instructions", () => {
+    const tx = withPriorityFee(new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), transfer()), 20_000);
+    expect(tx.instructions).toHaveLength(3);
+    expect(tx.instructions[0].programId.equals(ComputeBudgetProgram.programId) && tx.instructions[0].data[0]).toBe(3);
+    withPriorityFee(tx, 20_000);
+    expect(tx.instructions).toHaveLength(3); // idempotent: never two prices
+  });
+  it("keeps a price the transaction already sets, adds none at 0, and rejects invalid values", () => {
+    const priced = new Transaction().add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5 }), transfer());
+    expect(withPriorityFee(priced, 20_000).instructions).toHaveLength(2);
+    expect(withPriorityFee(new Transaction().add(transfer()), 0).instructions).toHaveLength(1);
+    expect(() => withPriorityFee(new Transaction(), -1)).toThrow();
+  });
+});
 
 const body = (method: string) => JSON.stringify({ jsonrpc: "2.0", id: "1", method, params: [] });
 const deadSocket = () => Promise.reject(new TypeError("fetch failed"));

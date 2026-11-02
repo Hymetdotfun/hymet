@@ -729,7 +729,14 @@ export async function awaitSignature(
     intervalMs = 1500,
     maxWaitMs = 150_000,
     sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
-  }: { intervalMs?: number; maxWaitMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+    rebroadcast,
+  }: {
+    intervalMs?: number;
+    maxWaitMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+    /** Re-sends the same signed bytes while the signature is unseen (same signature: it can land at most once). */
+    rebroadcast?: () => Promise<unknown>;
+  } = {},
 ): Promise<{ state: ConfirmationState; error?: unknown }> {
   // Transient RPC failures (e.g. public-endpoint 429) are retried with backoff; they never decide the outcome.
   const retry = { sleep };
@@ -753,6 +760,7 @@ export async function awaitSignature(
       if (!last) return { state: "expired" };
     }
     if (waited >= maxWaitMs) return { state: "unresolved" };
+    if (!st && rebroadcast) await rebroadcast().catch(() => undefined);
     await sleep(intervalMs);
   }
 }
