@@ -12,7 +12,7 @@ vi.mock("../lib/distributor-settlement", () => ({
   },
 }));
 import { distributorAddresses } from "../lib/distributor-engine";
-import { runHolderPayouts, type KeeperContext } from "../lib/holder-keeper";
+import { MAX_SETTLEMENTS_PER_RUN, runHolderPayouts, type KeeperContext } from "../lib/holder-keeper";
 
 const program = new PublicKey("9X9fnj4Uh9WC9nmxCahTVsixHZ6VGxNpMesuGhK239Px");
 const mint = Keypair.generate().publicKey;
@@ -44,11 +44,26 @@ beforeEach(() => { h.sources = []; });
 
 describe("keeper settlement right after graduation", () => {
   it("drains the last DBC fees, then registers and settles the DAMM v2 pool in the same run", async () => {
-    h.sources = [{ source: "dbc", dammDue: true }, { source: "damm" }];
+    h.sources = [{ source: "dbc", dammDue: true }, { source: "damm" }, { source: "damm", nothingToCollect: true }];
     const { k, sent } = harness();
     await runHolderPayouts(k, token);
     expect(sent).toEqual(["settle dbc", "settle damm"]);
     expect(h.sources).toEqual([]);
+  });
+
+  it("settles every DAMM v2 position with pending fees in one run, then stops", async () => {
+    h.sources = [{ source: "damm" }, { source: "damm" }, { source: "damm", nothingToCollect: true }, { source: "damm" }];
+    const { k, sent } = harness();
+    await runHolderPayouts(k, token);
+    expect(sent).toEqual(["settle damm", "settle damm"]);
+    expect(h.sources).toHaveLength(1);
+  });
+
+  it("bounds settlements per run so extra positions cannot exhaust the keeper", async () => {
+    h.sources = Array.from({ length: MAX_SETTLEMENTS_PER_RUN + 2 }, () => ({ source: "damm" as const }));
+    const { k, sent } = harness();
+    await runHolderPayouts(k, token);
+    expect(sent).toHaveLength(MAX_SETTLEMENTS_PER_RUN);
   });
 
   it("settles once while the curve is still bonding", async () => {

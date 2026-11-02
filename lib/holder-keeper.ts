@@ -46,6 +46,8 @@ export function decodeRewardEpoch(data: Buffer) {
 }
 
 const ATA_BATCH = 8;
+/** One DBC drain plus up to five DAMM v2 positions per run; anyone can add fee-pool-owned positions, so this is bounded. */
+export const MAX_SETTLEMENTS_PER_RUN = 6;
 const tx = (...ixs: TransactionInstruction[]) => new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }), ...ixs);
 
 async function existingAccounts(c: Connection, wallets: string[]) {
@@ -142,8 +144,10 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   // 2. Move accrued Meteora fees into the distributor (20% HYMET / creator / holders on-chain). Right after graduation
   //    the last DBC fees are drained first and the canonical DAMM v2 pool is registered and settled in the same run,
   //    before the snapshot and payouts, so a slow payout step cannot delay registration.
+  //    Every fee-pool-owned DAMM v2 position with pending fees is then settled, largest first, one per transaction,
+  //    until none is left (bounded per run; the rest wait for the next run).
   try {
-    for (let pass = 0; pass < 2; pass++) {
+    for (let pass = 0; pass < MAX_SETTLEMENTS_PER_RUN; pass++) {
       const settle = await settlementInstructions(k.connection, k.program, mint, new PublicKey(token.dbcPool), k.platform, k.authority.publicKey, k.authority.publicKey);
       if (settle.nothingToCollect) {
         k.log("settlement skipped", { mint: token.mint, source: settle.source, reason: "no collectible fees" });
@@ -152,7 +156,7 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
       const settleTx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...settle.instructions);
       if (k.dryRun) await k.simulate(settleTx, `settle ${settle.source}`);
       else await k.send(settleTx, `settle ${settle.source}`);
-      if (k.dryRun || !settle.dammDue) break;
+      if (k.dryRun || (settle.source === "dbc" && !settle.dammDue)) break;
     }
   } catch (e) {
     k.log("settlement skipped", e instanceof Error ? e.message : e);
