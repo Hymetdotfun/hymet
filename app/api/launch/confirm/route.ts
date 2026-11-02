@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { databaseConfigured, databasePool } from "../../../../lib/db";
 import { limitedBody, sameOrigin } from "../../../../lib/http";
 import { allocationFromBps, allocationFromShare, normalizeName, normalizeTicker } from "../../../../lib/hymet-policy";
@@ -8,7 +8,8 @@ import { bps, curve, distributorCurve, units, type Inputs, validate } from "../.
 import { distributorAddresses, verifyDistributorDeployment } from "../../../../lib/distributor-engine";
 import { checkNetwork, configuredPlatformFeeRecipient, verifyLaunch } from "../../../../lib/transactions";
 import { distributorAllowed } from "../../../../lib/launch-mode";
-import { serverRpcUrl, testNetworkRequested } from "../../../../lib/app-network";
+import { testNetworkRequested } from "../../../../lib/app-network";
+import { serverConnection } from "../../../../lib/server-rpc";
 import { isTestFileUrl } from "../../../../lib/test-network-files";
 export const runtime = "nodejs";
 
@@ -136,8 +137,7 @@ export async function POST(req: NextRequest) {
     )
       return json("No matching active HYMET reservation exists", 409);
 
-    const rpc = serverRpcUrl();
-    const connection = new Connection(rpc, "confirmed");
+    const connection = serverConnection();
     await checkNetwork(connection, "mainnet-beta");
     if (distributorProgramId) await verifyDistributorDeployment(connection, new PublicKey(distributorProgramId), platform);
     await readVerifiedMetadata(body.uri, body.artworkUri, values);
