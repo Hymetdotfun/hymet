@@ -19,7 +19,7 @@ import { runHolderPayouts } from "../lib/holder-keeper";
 import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
 
-const RPC_TIMEOUT_MS = 30_000;
+const RPC_TIMEOUT_MS = 30_000, REINDEX_TIMEOUT_MS = 180_000;
 
 async function main() {
   const send = process.argv.includes("--send");
@@ -84,7 +84,15 @@ async function main() {
         connection, program, platform, authority, db, log, dryRun: !send, policy,
         simulate,
         send: async (tx: Transaction, label: string) => sendTx(tx, label),
-        reindex: async () => { execFileSync(process.execPath, ["scripts/index-distributor.mjs"], { stdio: "inherit", env: process.env }); },
+        reindex: async () => {
+          // Bounded: the indexer is resumable (one signature per DB transaction), so a timeout only defers payouts to the next run.
+          const start = Date.now();
+          try {
+            execFileSync(process.execPath, ["scripts/index-distributor.mjs"], { stdio: "inherit", env: process.env, timeout: REINDEX_TIMEOUT_MS });
+          } finally {
+            log("reindex", { mint: t.mint_address, ms: Date.now() - start });
+          }
+        },
       }, { mint: String(t.mint_address), dbcPool: String(t.pool_address) }).catch((e: unknown) => ({ mint: t.mint_address, error: e instanceof Error ? e.message : String(e) }));
       log("token result", result);
     }

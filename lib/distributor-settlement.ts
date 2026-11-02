@@ -20,7 +20,8 @@ export async function settlementInstructions(
   caller: PublicKey,
   /** Signer allowed to register the migrated pool: the creator or the snapshot authority. */
   registrar?: PublicKey,
-): Promise<{ source: "dbc" | "damm"; instructions: TransactionInstruction[] }> {
+  /** dammDue: the DBC pool is already migrated, so once this drain lands the DAMM v2 position (and its registration) is next. */
+): Promise<{ source: "dbc" | "damm"; instructions: TransactionInstruction[]; dammDue?: boolean }> {
   const a = distributorAddresses(program, mint);
   const sdk = new DynamicBondingCurveClient(connection, "confirmed");
   const pool = await sdk.state.getPool(dbcPool);
@@ -37,7 +38,7 @@ export async function settlementInstructions(
     const ix = claim.instructions.find((i) => i.programId.equals(sdk.program.programId));
     if (!ix) throw Error("DBC claim instruction missing");
     instructions.push(distributorSettlement(program, mint, platform, caller, ix));
-    return { source: "dbc", instructions };
+    return { source: "dbc", instructions, dammDue: Boolean(pool.poolState.isMigrated) };
   }
   const destination = deriveDammV2PoolAddress(DAMM_V2_MIGRATION_FEE_ADDRESS[config.migrationFeeOption], mint, HYPE_MINT);
   const cp = new CpAmm(connection);

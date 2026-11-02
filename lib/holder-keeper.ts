@@ -139,12 +139,17 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   if (pool.nextEpoch > 0n && (await finishOpenEpoch(k, mint, pool.nextEpoch - 1n)) === "open")
     return { mint: token.mint, skipped: "previous epoch still open (dry run)" };
 
-  // 2. Move accrued Meteora fees into the distributor (20% HYMET / creator / holders on-chain).
+  // 2. Move accrued Meteora fees into the distributor (20% HYMET / creator / holders on-chain). Right after graduation
+  //    the last DBC fees are drained first and the canonical DAMM v2 pool is registered and settled in the same run,
+  //    before the snapshot and payouts, so a slow payout step cannot delay registration.
   try {
-    const settle = await settlementInstructions(k.connection, k.program, mint, new PublicKey(token.dbcPool), k.platform, k.authority.publicKey, k.authority.publicKey);
-    const settleTx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...settle.instructions);
-    if (k.dryRun) await k.simulate(settleTx, `settle ${settle.source}`);
-    else await k.send(settleTx, `settle ${settle.source}`);
+    for (let pass = 0; pass < 2; pass++) {
+      const settle = await settlementInstructions(k.connection, k.program, mint, new PublicKey(token.dbcPool), k.platform, k.authority.publicKey, k.authority.publicKey);
+      const settleTx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...settle.instructions);
+      if (k.dryRun) await k.simulate(settleTx, `settle ${settle.source}`);
+      else await k.send(settleTx, `settle ${settle.source}`);
+      if (k.dryRun || !settle.dammDue) break;
+    }
   } catch (e) {
     k.log("settlement skipped", e instanceof Error ? e.message : e);
   }
