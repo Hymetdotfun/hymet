@@ -1658,3 +1658,9 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 .fees-page .earn-section .results.creator-claim{margin:0;padding:0;border:0;background:none;box-shadow:none}
 .fees-page .earn-card .earn-consent input[type="checkbox"]{flex:0 0 16px;width:16px;height:16px;min-height:0;margin:2px 0 0;padding:0;border-radius:4px}
 .fees-page .earn-card .earn-advanced-body input:not([type="checkbox"]),.fees-page .earn-card .earn-advanced-body select{min-height:38px;font-size:12px}
+.earn-status{display:grid;gap:8px;margin:0;padding:12px 14px;border:1px solid #1b2b27;border-radius:12px}
+.earn-status>div{display:flex;justify-content:space-between;gap:12px;min-width:0}
+.earn-status dt{flex:none;color:#93aaa3;font-size:12px}
+.earn-status dd{margin:0;color:#dfe9e5;font-size:12px;text-align:right;overflow-wrap:anywhere}
+.fees-page .fees-pool-operations.earn-section{padding:0;border:0;background:none;box-shadow:none}
+@media(max-width:560px){.earn-status>div{flex-direction:column;gap:2px}.earn-status dd{text-align:left}}

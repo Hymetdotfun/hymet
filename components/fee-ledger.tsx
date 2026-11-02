@@ -5,6 +5,9 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { executeWalletOperation } from '../lib/wallet-operation';
+import { EarningsCard } from './earnings-card';
+import { claimNetworkLabel } from '../lib/app-network';
+import type { LaunchStatus } from '../lib/launch-status';
 
 type Ledger = {
   indexed: boolean;
@@ -14,7 +17,7 @@ type Ledger = {
   holderRewards?: { enabled: boolean; automatic: boolean; intervalHours: number };
   holderPayouts?: { mint: string; epoch: string; reward: string; paid: boolean; signature: string | null }[];
   distributorProgramId?: string | null;
-  creatorTokens?: {mint:string;ticker:string}[];
+  creatorTokens?: LaunchStatus[];
   totals?: {
     accrued: string;
     hymet: string;
@@ -127,18 +130,50 @@ function FeeLedgerWallet() {
       </section>
 
       {ledger?.chainVerified && !!ledger.creatorTokens?.length && (
-        <section className="fees-pool-operations" aria-labelledby="pool-operations-title">
-          <div className="fees-section-heading"><div><h2 id="pool-operations-title">Your Launch Pools</h2><p>Fee actions are built from verified pool state and require Phantom approval.</p></div></div>
-          {ledger.creatorTokens.map(token=>(
-            <article className="fees-pool-row" key={token.mint}>
-              <div><strong>${token.ticker}</strong><span>{token.mint}</span></div>
-              <div className="trade-actions">
-                <button disabled={busy} onClick={()=>void feeAction(token.mint,'collect')}>Collect &amp; settle</button>
-                <button disabled={busy} onClick={()=>void feeAction(token.mint,'creator')}>Claim creator fees</button>
-                <button disabled={busy} onClick={()=>void feeAction(token.mint,'migrate')}>Migrate eligible pool</button>
-              </div>
-            </article>
-          ))}
+        <section className="fees-pool-operations earn-section" aria-labelledby="pool-operations-title">
+          <div className="fees-section-heading"><div><h2 id="pool-operations-title">Your Launches</h2><p>Fees are collected, settled, migrated and paid to holders automatically.</p></div></div>
+          {ledger.creatorTokens.map((token) => {
+            const creatorPct = token.creatorBps / 100, holderPct = 100 - creatorPct;
+            const claimable = token.creatorClaimable ?? undefined;
+            const hasClaim = token.creatorBps > 0 && claimable !== undefined && /[1-9]/.test(claimable);
+            const stage = token.migration.state === "graduated" ? "Graduated · DAMM v2"
+              : token.migration.state === "graduating" ? "Curve complete · migrating to DAMM v2 automatically"
+              : token.migration.state === "bonding" ? `Bonding curve ${token.migration.percent ?? 0}%` : "Curve status unavailable";
+            const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) : "—");
+            return (
+              <EarningsCard
+                key={token.mint}
+                title={`$${token.ticker.toUpperCase()}`}
+                venue={token.venue}
+                name={token.name}
+                ticker={token.ticker}
+                imageUrl={token.imageUrl ?? undefined}
+                stage={`${stage} · ${creatorPct}% creator / ${holderPct}% holders`}
+                amount={token.creatorBps > 0 ? (claimable === undefined ? undefined : `${formatHype(claimable, true).replace(" HYPE", "")} HYPE`) : "Automatic"}
+                note={token.creatorBps > 0 ? `Your creator share, settled on-chain on ${claimNetworkLabel("mainnet-beta")}. Holder rewards are paid automatically.` : "The full creator share goes to holders automatically. There is nothing to claim."}
+                action={token.creatorBps > 0 ? { label: hasClaim ? "Claim Creator Fees" : "No creator fees yet", disabled: busy || !hasClaim, onClick: () => void feeAction(token.mint, "creator") } : undefined}
+                advanced={
+                  <>
+                    <div className="damm-technical-grid">
+                      <div><span>Token mint</span><code>{token.mint}</code></div>
+                      <div><span>Allocation (immutable)</span><code>{creatorPct}% creator / {holderPct}% holders of the 80%; HYMET 20%</code></div>
+                    </div>
+                    <p className="creator-claim-note">Recovery tools. The keeper runs these automatically; use them only if automation is delayed.</p>
+                    <div className="trade-actions">
+                      <button type="button" className="creator-claim-secondary" disabled={busy} onClick={() => void feeAction(token.mint, "collect")}>Collect &amp; settle now</button>
+                      {token.migration.state === "graduating" && <button type="button" className="creator-claim-secondary" disabled={busy} onClick={() => void feeAction(token.mint, "migrate")}>Migrate now</button>}
+                    </div>
+                  </>
+                }
+              >
+                <dl className="earn-status">
+                  <div><dt>Settlement</dt><dd>{token.lastSettlementAt ? `Last ${when(token.lastSettlementAt)}` : "Waiting for first fees"}</dd></div>
+                  <div><dt>Holder payouts</dt><dd>{token.holdersPaidCount ? `${formatHype(token.holdersPaid, true)} to ${token.holdersPaidCount} ${token.holdersPaidCount === 1 ? "holder" : "holders"} · last ${when(token.lastPayoutAt)}` : "None yet · automatic"}</dd></div>
+                  <div><dt>Migration</dt><dd>{token.migration.state === "graduated" ? "Done · DAMM v2" : token.migration.state === "graduating" ? "Automatic, next keeper run" : "Automatic at 100%"}</dd></div>
+                </dl>
+              </EarningsCard>
+            );
+          })}
           {claimMessage && <p className="fees-transaction-message" role="status">{claimMessage}</p>}
         </section>
       )}

@@ -9,7 +9,7 @@ import CreatorFees from "./creator-fees";
 import { TokenAvatar } from "./token-avatar";
 
 // `pool` is the DBC launch pool (claims start there); `protocol` is the current venue (DAMM v2 after graduation).
-type Launch = { mint: string; name: string; ticker: string; imageUrl?: string; pool?: string; protocol?: string; creator?: string };
+type Launch = { mint: string; name: string; ticker: string; imageUrl?: string; pool?: string; protocol?: string; creator?: string; distributor?: boolean };
 const venue = (l: Launch) => (l.protocol === "meteora_damm_v2" ? "DAMM v2" : "DBC");
 
 export function CreatorFeeClaims() {
@@ -29,7 +29,8 @@ function CreatorClaims() {
       .then(async (r) => { if (!r.ok) throw Error("Launch index unavailable"); return r.json() as Promise<{ launches?: Launch[] }>; })
       .then((d) => {
         if (!alive) return;
-        const mine = (d.launches || []).filter((t) => t.creator === owner && t.pool && (t.protocol === "meteora_dbc" || t.protocol === "meteora_damm_v2"));
+        // Distributor launches are shown under Your Launches (automatic settlement, payouts and migration).
+        const mine = (d.launches || []).filter((t) => t.creator === owner && t.pool && !t.distributor && (t.protocol === "meteora_dbc" || t.protocol === "meteora_damm_v2"));
         setLaunches(mine);
         setError("");
         if (mine.length === 1) setSelected({ pool: mine[0].pool!, requestId: Date.now(), launch: mine[0] });
@@ -39,6 +40,8 @@ function CreatorClaims() {
   }, [owner]);
 
   const multiple = (launches?.length || 0) > 1;
+  // Distributor-only creators manage everything under Your Launches; an empty section would only add noise.
+  if (owner && launches?.length === 0 && !error) return null;
   return (
     <section className="panel-card earn-section" id="creator-fee-claims">
       {!owner ? (

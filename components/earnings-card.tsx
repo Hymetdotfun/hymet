@@ -4,6 +4,7 @@ import { TokenAvatar } from "./token-avatar";
 // Compact creator-earnings card shared by the DBC and DAMM v2 claim flows. Purely presentational: the amount is
 // whatever the caller read from the verified pool or position, and the action runs the caller's existing review flow.
 export function EarningsCard({
+  title = "Creator Earnings",
   venue,
   name,
   ticker,
@@ -15,6 +16,7 @@ export function EarningsCard({
   children,
   advanced,
 }: {
+  title?: string;
   venue: "DBC" | "DAMM v2";
   name: string;
   ticker?: string;
@@ -29,7 +31,7 @@ export function EarningsCard({
   return (
     <article className="earn-card" data-venue={venue}>
       <div className="earn-head">
-        <h3>Creator Earnings</h3>
+        <h3>{title}</h3>
         <span className="earn-venue">{venue}</span>
       </div>
       <div className="earn-token">

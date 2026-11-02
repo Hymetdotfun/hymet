@@ -39,10 +39,12 @@ export async function GET(request: NextRequest) {
       creator_bps: number;
       holder_bps: number;
       damm_pool: string | null;
+      distributor: boolean;
     }>(
       `SELECT t.mint_address AS mint,t.name,t.ticker,t.artwork_uri AS image_url,t.creator_wallet AS creator,
               p.pool_address AS pool,t.creator_share_of_remaining_bps AS creator_bps,t.holder_share_of_remaining_bps AS holder_bps,
-              (SELECT d.pool_address FROM pools d WHERE d.mint_address=t.mint_address AND d.protocol='meteora_damm_v2' AND d.status='active') AS damm_pool
+              (SELECT d.pool_address FROM pools d WHERE d.mint_address=t.mint_address AND d.protocol='meteora_damm_v2' AND d.status='active') AS damm_pool,
+              t.distributor_program_id IS NOT NULL AS distributor
          FROM tokens t JOIN pools p USING(mint_address)
         WHERE t.creator_wallet=$1 AND t.quote_mint=$2
           AND t.status IN ('bonding','graduating','graduated')

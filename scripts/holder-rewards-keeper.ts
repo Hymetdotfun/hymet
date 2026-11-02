@@ -14,6 +14,7 @@ import { holderPayoutsLive } from "../lib/launch-mode";
 import { awaitSignature, configuredPlatformFeeRecipient } from "../lib/transactions";
 import { verifyDistributorDeployment } from "../lib/distributor-engine";
 import { runHolderPayouts } from "../lib/holder-keeper";
+import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
 
 async function main() {
@@ -43,27 +44,36 @@ async function main() {
       "SELECT t.mint_address,p.pool_address FROM tokens t JOIN pools p USING(mint_address) WHERE t.distributor_program_id=$1 AND t.holder_share_of_remaining_bps>0 AND p.protocol='meteora_dbc' ORDER BY t.created_at",
       [program.toBase58()],
     )).rows;
+    const simulate = async (tx: Transaction, label: string, extraSigners: Keypair[] = []) => {
+      tx.feePayer = authority.publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
+      const sim = await connection.simulateTransaction(tx, [authority, ...extraSigners]);
+      log(`simulated ${label}`, { err: sim.value.err, units: sim.value.unitsConsumed });
+      if (sim.value.err) throw Error(`${label} simulation failed: ${JSON.stringify(sim.value.err)}`);
+    };
+    const sendTx = async (tx: Transaction, label: string, extraSigners: Keypair[] = []) => {
+      const block = await connection.getLatestBlockhash("confirmed");
+      tx.feePayer = authority.publicKey;
+      tx.recentBlockhash = block.blockhash;
+      tx.sign(authority, ...extraSigners);
+      const signature = await connection.sendRawTransaction(tx.serialize(), { preflightCommitment: "confirmed", maxRetries: 0 });
+      const outcome = await awaitSignature(connection, signature, block.lastValidBlockHeight);
+      log(label, { signature, state: outcome.state });
+      if (outcome.state !== "confirmed") throw Error(`${label} ${outcome.state}: ${signature}`);
+      return signature;
+    };
+    // HYMET_AUTO_MIGRATE: "all" (default), "off", or a comma-separated mint allowlist (staged rollouts and tests).
+    const autoMigrate = (process.env.HYMET_AUTO_MIGRATE || "all").trim();
+    const migrates = (mint: string) => autoMigrate === "all" || (autoMigrate !== "off" && autoMigrate.split(",").map((m) => m.trim()).includes(mint));
     for (const t of tokens) {
+      // Graduation first: a complete curve is migrated to DAMM v2 so this run's settlement can use the new position.
+      const migration = !migrates(String(t.mint_address)) ? { mint: t.mint_address, migrate: false, status: "auto-migration not enabled for this mint" } : await migrateIfEligible({ connection, program, authority, dryRun: !send, simulate, send: async (tx, label, extra) => sendTx(tx, label, extra) }, { mint: String(t.mint_address), dbcPool: String(t.pool_address) })
+        .catch((e: unknown) => ({ mint: t.mint_address, error: e instanceof Error ? e.message : String(e) }));
+      log("migration check", migration);
       const result = await runHolderPayouts({
         connection, program, platform, authority, db, log, dryRun: !send, policy,
-        simulate: async (tx: Transaction, label: string) => {
-          tx.feePayer = authority.publicKey;
-          tx.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
-          const sim = await connection.simulateTransaction(tx, [authority]);
-          log(`simulated ${label}`, { err: sim.value.err, units: sim.value.unitsConsumed });
-          if (sim.value.err) throw Error(`${label} simulation failed: ${JSON.stringify(sim.value.err)}`);
-        },
-        send: async (tx: Transaction, label: string) => {
-          const block = await connection.getLatestBlockhash("confirmed");
-          tx.feePayer = authority.publicKey;
-          tx.recentBlockhash = block.blockhash;
-          tx.sign(authority);
-          const signature = await connection.sendRawTransaction(tx.serialize(), { preflightCommitment: "confirmed", maxRetries: 0 });
-          const outcome = await awaitSignature(connection, signature, block.lastValidBlockHeight);
-          log(label, { signature, state: outcome.state });
-          if (outcome.state !== "confirmed") throw Error(`${label} ${outcome.state}: ${signature}`);
-          return signature;
-        },
+        simulate,
+        send: async (tx: Transaction, label: string) => sendTx(tx, label),
         reindex: async () => { execFileSync(process.execPath, ["scripts/index-distributor.mjs"], { stdio: "inherit", env: process.env }); },
       }, { mint: String(t.mint_address), dbcPool: String(t.pool_address) }).catch((e: unknown) => ({ mint: t.mint_address, error: e instanceof Error ? e.message : String(e) }));
       log("token result", result);

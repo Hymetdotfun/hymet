@@ -3,6 +3,7 @@ import { databaseConfigured, query } from "../../../lib/db";
 import { HYPE_MINT } from "../../../lib/quote-assets";
 import { PublicKey } from "@solana/web3.js";
 import { verifiedDistributor } from "../../../lib/distributor-readiness";
+import { creatorLaunchStatuses } from "../../../lib/launch-status";
 import { HOLDER_REWARDS_ACTIVE_NOTE, HOLDER_REWARDS_DISABLED_NOTE, HOLDER_REWARDS_PENDING_NOTE, NATIVE_SPLIT, holderPayoutsLive, launchMode } from "../../../lib/launch-mode";
 import { HOLDER_PAYOUT_POLICY } from "../../../lib/holder-payouts.mjs";
 
@@ -64,7 +65,8 @@ export async function GET(request: NextRequest) {
         )).rows.map((r) => ({ mint: r.mint_address, epoch: r.epoch, reward: amount(r.reward_amount), paid: r.claimed_amount === r.reward_amount, signature: r.signature }))
       : [];
     const row = totals.rows[0];
-    const creatorTokens = wallet && distributor ? (await query<{mint_address:string;ticker:string}>("SELECT mint_address,ticker FROM tokens WHERE creator_wallet=$1 AND distributor_program_id=$2 ORDER BY created_at DESC LIMIT 50",[wallet,distributor.program.toBase58()])).rows : [];
+    // Creator view of distributor launches: claimable share, automatic settlement/payout/migration status.
+    const creatorTokens = wallet && distributor ? await creatorLaunchStatuses(distributor.connection, distributor.program, new PublicKey(wallet).toBase58()) : [];
     let preparedEpochs:{mint:string;epoch:string;fundedHype:string}[]=[];
     if(wallet && distributor) {
       const state=await distributor.connection.getAccountInfo(distributor.config,'confirmed');
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest) {
         },
         claimable: claimable ? amount(claimable.rows[0]?.amount) : null,
         holderPayouts,
-        creatorTokens: creatorTokens.map(t=>({mint:t.mint_address,ticker:t.ticker})),
+        creatorTokens,
         preparedEpochs,
         distributorProgramId: distributor?.program.toBase58() ?? null,
         note: !distributor
