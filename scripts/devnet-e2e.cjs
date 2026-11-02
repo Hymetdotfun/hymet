@@ -66,14 +66,25 @@ const programTarget = `${dir}/build/target`;
 const execution = [];
 const save = (name,extra) => fs.writeFileSync(`${dir}/devnet-proof-${name}.json`,JSON.stringify({cluster:'devnet',hypeTestMint:hype.toBase58(),...extra,execution},null,2));
 
+// Public Devnet RPC answers bursts with 429 ("too many requests for a specific RPC call"). Status polls back off and a
+// rate-limited send is retried with the SAME signed transaction (same signature), so a retry can never duplicate it.
+const rateLimited=e=>/429|Too Many Requests|Too many requests/i.test(e?.message||'');
+async function send(raw,options) {
+  for(let i=0;;i++) {
+    try { return await connection.sendRawTransaction(raw,options); }
+    catch(e) { if(!rateLimited(e)||i>=8) throw e; await new Promise(r=>setTimeout(r,2000*(i+1))); }
+  }
+}
 async function confirm(signature) {
-  for(let n=0;n<240;n++) {
-    const status=(await connection.getSignatureStatuses([signature],{searchTransactionHistory:true})).value[0];
+  for(let n=0;n<180;n++) {
+    let status;
+    try { status=(await connection.getSignatureStatuses([signature],{searchTransactionHistory:true})).value[0]; }
+    catch(e) { if(!rateLimited(e)) throw e; }
     if(status && ['confirmed','finalized'].includes(status.confirmationStatus)) {
       if(status.err) throw Error(JSON.stringify(status.err));
       return;
     }
-    await new Promise(resolve=>setTimeout(resolve,500));
+    await new Promise(resolve=>setTimeout(resolve,1500));
   }
   throw Error(`Devnet confirmation timed out: ${signature}`);
 }
@@ -87,7 +98,7 @@ async function submit(label,transaction,signers,{keepBudget=false}={}) {
   transaction.signatures=[];
   transaction.sign(...signers);
   try {
-    const signature=await connection.sendRawTransaction(transaction.serialize());
+    const signature=await send(transaction.serialize());
     await confirm(signature);
     execution.push({result:'PASS',label,signature});
     console.log(`PASS ${label}: ${signature}`);
@@ -101,7 +112,7 @@ async function rejected(label,transaction,signers,expectedLog) {
   transaction.feePayer=signers[0].publicKey;
   transaction.recentBlockhash=(await connection.getLatestBlockhash()).blockhash;
   transaction.sign(...signers);
-  const signature=await connection.sendRawTransaction(transaction.serialize(),{skipPreflight:true});
+  const signature=await send(transaction.serialize(),{skipPreflight:true});
   let failed=false;
   try { await confirm(signature); } catch { failed=true; }
   assert(failed,`${label} unexpectedly succeeded: ${signature}`);
@@ -117,7 +128,13 @@ async function rejectedBuild(label,build,expected) {
   execution.push({result:'PASS',label:`rejected ${label}`,expected:String(expected)});
   console.log(`PASS rejected ${label}: ${expected}`);
 }
-const bal=async(owner,mint)=>{try{return (await getAccount(connection,getAssociatedTokenAddressSync(mint,owner))).amount;}catch{return 0n;}};
+// A missing token account is a zero balance; any other read error (e.g. a 429) is retried, never read as zero.
+const bal=async(owner,mint)=>{
+  for(let i=0;;i++) {
+    try { return (await getAccount(connection,getAssociatedTokenAddressSync(mint,owner))).amount; }
+    catch(e) { if(e?.name==='TokenAccountNotFoundError') return 0n; if(i>=8) throw e; await new Promise(r=>setTimeout(r,1500*(i+1))); }
+  }
+};
 async function fundSol(payer,to,label,sol) {
   if ((await connection.getBalance(to))<sol*LAMPORTS_PER_SOL/2)
     await submit(`fund ${label} test wallet`,new Transaction().add(SystemProgram.transfer({fromPubkey:payer.publicKey,toPubkey:to,lamports:Math.round(sol*LAMPORTS_PER_SOL)})),[payer]);
@@ -199,7 +216,8 @@ async function automaticFlow(payer,platform,snapshot,program,db) {
     await q('INSERT INTO indexer_checkpoints(source,last_slot,last_signature) VALUES($1,$2,$3)',[program.toBase58(),latest.slot,latest.signature]);
   // The DB keeps the app's logical HYPE label (the indexer requires it); on-chain the Devnet test mint is used.
   const HYPE_LABEL=MAINNET_HYPE;
-  await fundSol(payer,snapshot.publicKey,'keeper (snapshot authority; pays migration rent)',0.3);
+  // The keeper spent 0.045 SOL for two migrations plus three runs in the rehearsal; 0.12 keeps a wide margin.
+  await fundSol(payer,snapshot.publicKey,'keeper (snapshot authority; pays migration rent)',0.12);
   if (rehearsal && (await connection.getBalance(new PublicKey('FhVo3mqL8PW5pH5U2CN4XE33DokiyZnUwuGpH2hmHLuM')))<100_000_000)
     throw Error('Rehearsal: fund the DBC pool authority on the loopback validator first (devnet-rehearsal.sh does this)');
   const holderA=Keypair.fromSeed(createHash('sha256').update('HYMET DEVNET AUTO HOLDER A').digest());
@@ -230,7 +248,21 @@ async function automaticFlow(payer,platform,snapshot,program,db) {
     return out[0];
   };
   const launches=[];
-  for (const creatorBps of [500,0]) {
+  // Resume (HYMET_DEVNET_RESUME_LOG = the stopped run's log): continue the same launches after keeper run 1 instead of
+  // relaunching. Launches come from the test DB; their earlier trades' fee events are re-read from the logged signatures.
+  const resumeLog=process.env.HYMET_DEVNET_RESUME_LOG;
+  if (resumeLog) {
+    const lines=fs.readFileSync(resumeLog,'utf8').split(/\r?\n/);
+    for (const r of await q("SELECT t.mint_address,t.creator_share_of_remaining_bps cb,t.distributor_fee_pool fp,p.pool_address FROM tokens t JOIN pools p USING(mint_address) WHERE t.distributor_program_id=$1 AND t.description='Devnet automatic flow' AND p.protocol='meteora_dbc' ORDER BY t.created_at",[program.toBase58()])) {
+      const creatorBps=Number(r.cb), tag=`${creatorBps/100}/${100-creatorBps/100}`;
+      const l={tag,creatorBps,mint:r.mint_address,base:{publicKey:new PublicKey(r.mint_address)},pool:new PublicKey(r.pool_address),feePool:new PublicKey(r.fp),trades:[],resumed:true};
+      for (const line of lines) { const m=line.match(/^PASS \[([^\]]+)\] holder [AB] app (buy|sell) .*: ([1-9A-HJ-NP-Za-km-z]{80,90})$/); if (m && m[1]===tag) l.trades.push(await feeEvents(m[3])); }
+      check(`[${tag}] resumed launch with its ${l.trades.length} logged DBC trades`,l.trades.length===3,r.mint_address);
+      launches.push(l);
+    }
+    assert.equal(launches.length,2,'resume expects the 5/95 and 0/100 launches');
+  }
+  for (const creatorBps of resumeLog?[]:[500,0]) {
     const tag=`${creatorBps/100}/${100-creatorBps/100}`;
     const config=Keypair.generate(),base=Keypair.generate(),mint=base.publicKey.toBase58();
     const [feePool]=PublicKey.findProgramAddressSync([Buffer.from('fee-pool'),base.publicKey.toBuffer()],program);
@@ -260,7 +292,10 @@ async function automaticFlow(payer,platform,snapshot,program,db) {
   const keeperPhase=async(label)=>{
     const wallets=[holderA.publicKey,holderB.publicKey,payer.publicKey];
     const before={bal:await Promise.all(wallets.map(w=>bal(w,hype))),platform:await bal(platform.publicKey,hype),paid:await Promise.all(launches.map(l=>paidByWallet(l.mint))),pools:await Promise.all(launches.map(fp))};
-    const log=runKeeper(label);
+    // A keeper run that hit a public-RPC rate limit mid-way is simply run again (it resumes open epochs itself).
+    let log=runKeeper(label);
+    for (let retry=0; retry<2 && log.some(x=>x.message==='token result'&&x.data?.error); retry++) log=log.concat(runKeeper(`${label}, retry ${retry+1}`));
+    check(`${label}: every token processed without error`,!log.filter(x=>x.message==='token result').slice(-launches.length).some(x=>x.data?.error),'ok');
     const after={bal:await Promise.all(wallets.map(w=>bal(w,hype))),platform:await bal(platform.publicKey,hype),paid:await Promise.all(launches.map(l=>paidByWallet(l.mint))),pools:await Promise.all(launches.map(fp))};
     wallets.forEach((w,i)=>{ const paid=launches.reduce((s,_,j)=>s+(after.paid[j][w.toBase58()]??0n)-(before.paid[j][w.toBase58()]??0n),0n);
       check(`${label}: ${['holder A','holder B','creator'][i]} HYPE rose by exactly its automatic payouts`,after.bal[i]-before.bal[i]===paid,`delta ${after.bal[i]-before.bal[i]}, payouts ${paid}`); });
@@ -269,13 +304,22 @@ async function automaticFlow(payer,platform,snapshot,program,db) {
     return log;
   };
 
-  for (const l of launches) {
-    await trade(l,'holder A app buy 30 test HYPE (DBC)',await app(l,holderA,'buy','30'),holderA);
-    await trade(l,'holder B app buy 40 test HYPE (DBC)',await app(l,holderB,'buy','40'),holderB);
-    await trade(l,'holder B app sell 25% (DBC)',await app(l,holderB,'sell',formatUnits((await bal(holderB.publicKey,l.base.publicKey))/4n,9)),holderB);
+  if (resumeLog) {
+    // Keeper run 1 already ran; verify its payouts from the payout transactions themselves (exact HYPE deltas).
+    for (const l of launches) for (const r of await q('SELECT e.wallet_address w,e.claimed_amount::text p,c.transaction_signature s FROM holder_reward_entitlements e JOIN claims c ON c.entitlement_id=e.id WHERE e.mint_address=$1 AND e.epoch=0',[l.mint])) {
+      const tx=await connection.getTransaction(r.s,{commitment:'confirmed',maxSupportedTransactionVersion:0});
+      const pick=a=>a.filter(b=>b.mint===hype.toBase58()&&b.owner===r.w).reduce((x,b)=>x+BigInt(b.uiTokenAmount.amount),0n);
+      check(`[${l.tag}] keeper run 1 payout to ${r.w.slice(0,4)} matches its on-chain transfer`,pick(tx.meta.postTokenBalances)-pick(tx.meta.preTokenBalances)===BigInt(r.p),`${r.p} in ${r.s.slice(0,8)}`);
+    }
+  } else {
+    for (const l of launches) {
+      await trade(l,'holder A app buy 30 test HYPE (DBC)',await app(l,holderA,'buy','30'),holderA);
+      await trade(l,'holder B app buy 40 test HYPE (DBC)',await app(l,holderB,'buy','40'),holderB);
+      await trade(l,'holder B app sell 25% (DBC)',await app(l,holderB,'sell',formatUnits((await bal(holderB.publicKey,l.base.publicKey))/4n,9)),holderB);
+    }
+    const k1=await keeperPhase('keeper run 1 (DBC fees)');
+    for (const l of launches) check(`[${l.tag}] keeper left the bonding curve alone`,k1.some(x=>x.message==='migration check'&&x.data?.mint===l.mint&&/^bonding/.test(x.data.status)),'status bonding');
   }
-  const k1=await keeperPhase('keeper run 1 (DBC fees)');
-  for (const l of launches) check(`[${l.tag}] keeper left the bonding curve alone`,k1.some(x=>x.message==='migration check'&&x.data?.mint===l.mint&&/^bonding/.test(x.data.status)),'status bonding');
 
   for (const l of launches) {
     const plan=await app(l,holderB,'buy','200');
