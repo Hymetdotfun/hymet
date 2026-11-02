@@ -7,6 +7,8 @@
 //   --pre-init   fund test wallets, prove only the upgrade authority can initialize, then initialize (Devnet config)
 //   --native     Phase 1 native split: launch, app buy/sell, 20/80 platform and creator claims
 //   (default)    distributor v2: atomic launch, trades, settlement, claims, push payouts, graduation, DAMM v2
+//   --automatic  7c9b9e2 flow at 5/95 and 0/100: app trades, real keeper (scripts/devnet-keeper.cjs) settles, migrates
+//                to DAMM v2 and pays holders with no creator action; needs HYMET_DEVNET_DATABASE_URL (hymet_devnet*)
 // Usage: HYMET_DEVNET_DIR=/srv/hymet-build/devnet-e2e node scripts/devnet-e2e.cjs [--pre-init|--native]
 // Rehearsal before spending Devnet SOL: HYMET_DEVNET_REHEARSAL=1 DEVNET_RPC_URL=http://127.0.0.1:<port> (loopback only).
 const fs = require('node:fs');
@@ -20,6 +22,9 @@ const {Connection,Keypair,PublicKey,ComputeBudgetProgram,SystemProgram,Transacti
 const key = name => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(`${dir}/keys/${name}.json`,'utf8'))));
 const hypeMintKey = key('hype-mint');
 const hype = hypeMintKey.publicKey;
+// The app's swap builders accept distributor launches only in holder-reward builds (the launch form's flags).
+process.env.NEXT_PUBLIC_HYMET_HOLDER_REWARDS = 'true';
+process.env.NEXT_PUBLIC_HYMET_DISTRIBUTOR_PROGRAM_ID = key('program').publicKey.toBase58();
 require.extensions['.ts'] = (module, filename) => {
   let source = fs.readFileSync(filename,'utf8');
   if (filename.endsWith('quote-assets.ts')) {
@@ -38,6 +43,12 @@ const {defaults,curve,distributorCurve} = require('../lib/config.ts');
 const quoteAssets = require('../lib/quote-assets.ts');
 const {createDistributorPool,distributorSettlement,creatorDistributorClaim,registerDistributorMigration,fundDistributorEpoch,distributeHolderChunk,closeHolderEpoch,holderEpochAddress,verifyDistributorPool}=require('../lib/distributor-engine.ts');
 const {prepareDbcSwap,formatUnits} = require('../lib/dbc-swap.ts');
+const {prepareDammSwap} = require('../lib/damm-swap.ts');
+const {decodeFeePool} = require('../lib/distributor-engine.ts');
+const {BorshEventCoder} = require('@coral-xyz/anchor');
+const {CpAmmIdl} = require('@meteora-ag/cp-amm-sdk');
+const {execFileSync} = require('node:child_process');
+const path = require('node:path');
 const {prepareCreatorClaim,readCreatorFees} = require('../lib/creator-fees.ts');
 const {preparePlatformClaim,readPlatformFees} = require('../lib/platform-fees.ts');
 const {HOLDER_PAYOUT_POLICY,eligibleHolders,planHolderEpoch}=require('../lib/holder-payouts.mjs');
@@ -166,6 +177,153 @@ async function nativeSplit(payer,platform) {
   console.log('PASS: Devnet native split: launch, app buy/sell, 20% platform / 80% creator claims, wrong-wallet and double claims rejected');
 }
 
+// Automatic distributor flow (7c9b9e2): fresh 5/95 and 0/100 launches; holders trade through the app's swap builders;
+// the unmodified keeper (scripts/devnet-keeper.cjs) settles, migrates the complete curve to DAMM v2 and pays holders.
+// No creator action after launch. Every amount is reconciled against swap events, fee-pool counters and the test DB.
+async function automatic(payer,platform,snapshot,program) {
+  const dbUrl=process.env.HYMET_DEVNET_DATABASE_URL||'';
+  assert(/\/hymet_devnet\w*(\?|$)/.test(dbUrl),'HYMET_DEVNET_DATABASE_URL must point at a hymet_devnet* test database');
+  const {Client}=require('pg');
+  const db=new Client({connectionString:dbUrl});
+  await db.connect();
+  // Always release the DB connection so a failed check exits instead of keeping the process alive.
+  try { await automaticFlow(payer,platform,snapshot,program,db); } finally { await db.end(); }
+}
+async function automaticFlow(payer,platform,snapshot,program,db) {
+  const dbUrl=process.env.HYMET_DEVNET_DATABASE_URL;
+  const q=async(sql,args=[])=>(await db.query(sql,args)).rows;
+  const check=(label,ok,detail)=>{ assert(ok,`${label}: ${detail}`); execution.push({result:'PASS',label,detail}); console.log(`PASS ${label} — ${detail}`); };
+  // Earlier phases' tokens are not in this test DB; the indexer starts after them (it fails closed on unknown tokens).
+  const latest=(await connection.getSignaturesForAddress(program,{limit:1},'confirmed'))[0];
+  if (latest && !(await q('SELECT 1 FROM indexer_checkpoints WHERE source=$1',[program.toBase58()])).length)
+    await q('INSERT INTO indexer_checkpoints(source,last_slot,last_signature) VALUES($1,$2,$3)',[program.toBase58(),latest.slot,latest.signature]);
+  // The DB keeps the app's logical HYPE label (the indexer requires it); on-chain the Devnet test mint is used.
+  const HYPE_LABEL=MAINNET_HYPE;
+  await fundSol(payer,snapshot.publicKey,'keeper (snapshot authority; pays migration rent)',0.3);
+  if (rehearsal && (await connection.getBalance(new PublicKey('FhVo3mqL8PW5pH5U2CN4XE33DokiyZnUwuGpH2hmHLuM')))<100_000_000)
+    throw Error('Rehearsal: fund the DBC pool authority on the loopback validator first (devnet-rehearsal.sh does this)');
+  const holderA=Keypair.fromSeed(createHash('sha256').update('HYMET DEVNET AUTO HOLDER A').digest());
+  const holderB=Keypair.fromSeed(createHash('sha256').update('HYMET DEVNET AUTO HOLDER B').digest());
+  for (const [label,h] of [['holder A',holderA],['holder B',holderB]]) { await fundSol(payer,h.publicKey,label,0.03); if ((await bal(h.publicKey,hype))<300_000_000_000n) await testHype(payer,h.publicKey,300_000_000_000n); }
+  const sdk=new DynamicBondingCurveClient(connection,'confirmed'), dammCoder=new BorshEventCoder(CpAmmIdl);
+  const keeperEnv={...process.env,DATABASE_URL:dbUrl,HYMET_DEVNET_DIR:dir,HYMET_DISTRIBUTOR_PROGRAM_ID:program.toBase58(),HYMET_KEEPER_KEYPAIR:`${dir}/keys/snapshot.json`,HYMET_KEEPER_RPC_URL:rpcUrl,MAINNET_RPC_URL:rpcUrl,HYMET_PLATFORM_FEE_RECIPIENT:platform.publicKey.toBase58(),HYMET_AUTO_MIGRATE:'all',ENABLE_MAINNET:'false',NEXT_PUBLIC_ENABLE_MAINNET:'false'};
+  const runKeeper=(label)=>{
+    const out=execFileSync(process.execPath,[path.join(__dirname,'devnet-keeper.cjs'),'--send','--min-payout=1'],{env:keeperEnv,cwd:path.join(__dirname,'..'),encoding:'utf8',timeout:1_200_000,maxBuffer:64*1024*1024});
+    const lines=out.split('\n').flatMap(l=>{ try { return l.startsWith('{')?[JSON.parse(l)]:[]; } catch { return []; } });
+    console.log(`PASS keeper run (${label}): ${lines.filter(l=>/^(migrate|settle|fund epoch|pay chunk|close epoch)/.test(l.message)).map(l=>l.message).join(', ')}`);
+    return lines;
+  };
+  const paidByWallet=async(mint)=>Object.fromEntries((await q('SELECT wallet_address w,sum(claimed_amount)::text p FROM holder_reward_entitlements WHERE mint_address=$1 GROUP BY 1',[mint])).map(r=>[r.w,BigInt(r.p)]));
+  const feeEvents=async(sig)=>{
+    const tx=await connection.getTransaction(sig,{commitment:'confirmed',maxSupportedTransactionVersion:0});
+    const keys=tx.transaction.message.staticAccountKeys, out=[];
+    for (const inner of tx.meta.innerInstructions||[]) for (const ix of inner.instructions) {
+      const data=Buffer.from((require('bs58').default||require('bs58')).decode(ix.data)).subarray(8).toString('base64');
+      if (keys[ix.programIdIndex].equals(sdk.program.programId)) { let ev; try { ev=sdk.program.coder.events.decode(data); } catch { /* not an event */ }
+        if (ev?.name==='evtSwap3') { const e=ev.data,buy=e.tradeDirection===1,fee=BigInt(e.tradingFee.toString())+BigInt(e.protocolFee.toString())+BigInt(e.referralFee.toString());
+          out.push({sig,venue:'DBC',gross:buy?BigInt(e.includedTransferFeeAmountIn.toString()):BigInt(e.includedTransferFeeAmountOut.toString())+fee,fee,protocol:BigInt(e.protocolFee.toString()),eligible:BigInt(e.tradingFee.toString())}); } }
+      else if (keys[ix.programIdIndex].toBase58()==='cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG') { let ev; try { ev=dammCoder.decode(data); } catch { /* not an event */ }
+        if (ev?.name==='EvtSwap2') { const r=ev.data.swap_result,buy=ev.data.trade_direction===1,lp=BigInt(r.claiming_fee.toString())+BigInt(r.compounding_fee.toString()),protocol=BigInt(r.protocol_fee.toString()),fee=lp+protocol+BigInt(r.referral_fee.toString());
+          out.push({sig,venue:'DAMM v2',gross:buy?BigInt(r.included_fee_input_amount.toString()):BigInt(r.output_amount.toString())+fee,fee,protocol,eligible:lp}); } }
+    }
+    assert(out.length===1,`expected one swap event in ${sig}`);
+    return out[0];
+  };
+  const launches=[];
+  for (const creatorBps of [500,0]) {
+    const tag=`${creatorBps/100}/${100-creatorBps/100}`;
+    const config=Keypair.generate(),base=Keypair.generate(),mint=base.publicKey.toBase58();
+    const [feePool]=PublicKey.findProgramAddressSync([Buffer.from('fee-pool'),base.publicKey.toBuffer()],program);
+    const parameters=distributorCurve({...defaults,name:'Devnet Auto',symbol:'DAUT',creatorShare:String(creatorBps/100)},payer.publicKey);
+    await submit(`[${tag}] DBC create_config2 (1% fee, fee claimer = distributor PDA)`,await sdk.partner.createConfig2({...parameters,config:config.publicKey,feeClaimer:feePool,leftoverReceiver:payer.publicKey,quoteMint:hype,payer:payer.publicKey,transferFeeParameters:null}),[payer,config]);
+    const cfg=await sdk.state.getPoolConfig(config.publicKey);
+    check(`[${tag}] configured trading fee 1%`,cfg.poolFees.baseFee.cliffFeeNumerator.toString()==='10000000'&&cfg.migratedPoolFeeBps===100,`DBC ${cfg.poolFees.baseFee.cliffFeeNumerator}/1e9, migrated ${cfg.migratedPoolFeeBps} bps`);
+    const pool=deriveDbcPoolAddress(hype,base.publicKey,config.publicKey);
+    const launchTx=await sdk.creator.createPool({name:'Devnet Auto',symbol:'DAUT',uri:'https://example.invalid/devnet-auto.json',payer:payer.publicKey,poolCreator:payer.publicKey,config:config.publicKey,baseMint:base.publicKey});
+    launchTx.add(createDistributorPool(program,base.publicKey,payer.publicKey,pool,creatorBps));
+    await submit(`[${tag}] atomic token/DBC pool/distributor launch`,launchTx,[payer,base]);
+    await verifyDistributorPool(connection,program,base.publicKey,payer.publicKey,pool,creatorBps);
+    const unique=`devauto${creatorBps}${mint.slice(0,8)}`.toLowerCase();
+    await q('INSERT INTO creators(wallet_address) VALUES($1) ON CONFLICT DO NOTHING',[payer.publicKey.toBase58()]);
+    const reservation=await q("INSERT INTO launch_reservations(creator_wallet,name,ticker,name_key,ticker_key,status,idempotency_key,expires_at) VALUES($1,$2,$2,$2,$2,'confirmed',$2,now()+interval '1 hour') RETURNING id",[payer.publicKey.toBase58(),unique]);
+    const launchSig=execution.at(-1).signature, slot=(await connection.getSignatureStatuses([launchSig],{searchTransactionHistory:true})).value[0].slot;
+    await q("INSERT INTO tokens(mint_address,reservation_id,creator_wallet,name,ticker,name_key,ticker_key,description,metadata_uri,artwork_uri,quote_mint,trading_fee_bps,creator_share_of_remaining_bps,holder_share_of_remaining_bps,status,launch_signature,confirmed_slot,distributor_program_id,distributor_fee_pool) VALUES($1,$2,$3,$4,$4,$4,$4,'Devnet automatic flow','https://example.invalid/devnet-auto.json','https://example.invalid/devnet-auto.png',$5,100,$6,$7,'bonding',$8,$9,$10,$11)",[mint,reservation[0].id,payer.publicKey.toBase58(),unique,HYPE_LABEL,creatorBps,10000-creatorBps,launchSig,slot,program.toBase58(),feePool.toBase58()]);
+    await q("INSERT INTO pools(pool_address,mint_address,protocol,quote_mint,status) VALUES($1,$2,'meteora_dbc',$3,'active')",[pool.toBase58(),mint,HYPE_LABEL]);
+    launches.push({tag,creatorBps,mint,base,pool,feePool,trades:[]});
+  }
+  const fp=async(l)=>decodeFeePool((await connection.getAccountInfo(l.feePool,'confirmed')).data);
+  const app=(l,wallet,side,amount)=>prepareDbcSwap(appConnection,{mint:l.mint,pool:l.pool.toBase58(),wallet:wallet.publicKey,side,amount,slippageBps:100,platform:platform.publicKey});
+  const trade=async(l,label,plan,signer)=>{ await submit(`[${l.tag}] ${label}`,plan.tx,[signer],{keepBudget:true}); l.trades.push(await feeEvents(execution.at(-1).signature)); return plan; };
+  const platformHype=getAssociatedTokenAddressSync(hype,platform.publicKey);
+  await submit('platform HYPE ATA',new Transaction().add(createAssociatedTokenAccountIdempotentInstruction(payer.publicKey,platformHype,platform.publicKey,hype)),[payer]);
+  // One keeper phase: wallet HYPE deltas must equal exactly the payouts indexed in that run; the platform gets exactly 20%.
+  const keeperPhase=async(label)=>{
+    const wallets=[holderA.publicKey,holderB.publicKey,payer.publicKey];
+    const before={bal:await Promise.all(wallets.map(w=>bal(w,hype))),platform:await bal(platform.publicKey,hype),paid:await Promise.all(launches.map(l=>paidByWallet(l.mint))),pools:await Promise.all(launches.map(fp))};
+    const log=runKeeper(label);
+    const after={bal:await Promise.all(wallets.map(w=>bal(w,hype))),platform:await bal(platform.publicKey,hype),paid:await Promise.all(launches.map(l=>paidByWallet(l.mint))),pools:await Promise.all(launches.map(fp))};
+    wallets.forEach((w,i)=>{ const paid=launches.reduce((s,_,j)=>s+(after.paid[j][w.toBase58()]??0n)-(before.paid[j][w.toBase58()]??0n),0n);
+      check(`${label}: ${['holder A','holder B','creator'][i]} HYPE rose by exactly its automatic payouts`,after.bal[i]-before.bal[i]===paid,`delta ${after.bal[i]-before.bal[i]}, payouts ${paid}`); });
+    const platformIn=launches.reduce((s,_,j)=>s+after.pools[j].totalPlatform-before.pools[j].totalPlatform,0n);
+    check(`${label}: platform wallet received exactly the 20% shares settled`,after.platform-before.platform===platformIn,`+${after.platform-before.platform}`);
+    return log;
+  };
+
+  for (const l of launches) {
+    await trade(l,'holder A app buy 30 test HYPE (DBC)',await app(l,holderA,'buy','30'),holderA);
+    await trade(l,'holder B app buy 40 test HYPE (DBC)',await app(l,holderB,'buy','40'),holderB);
+    await trade(l,'holder B app sell 25% (DBC)',await app(l,holderB,'sell',formatUnits((await bal(holderB.publicKey,l.base.publicKey))/4n,9)),holderB);
+  }
+  const k1=await keeperPhase('keeper run 1 (DBC fees)');
+  for (const l of launches) check(`[${l.tag}] keeper left the bonding curve alone`,k1.some(x=>x.message==='migration check'&&x.data?.mint===l.mint&&/^bonding/.test(x.data.status)),'status bonding');
+
+  for (const l of launches) {
+    const plan=await app(l,holderB,'buy','200');
+    check(`[${l.tag}] final app buy fills exactly to the curve end`,plan.requestedIn===200_000_000_000n&&plan.amountIn<plan.requestedIn,`spends ${plan.amountIn} of ${plan.requestedIn}`);
+    await trade(l,'holder B curve-completing app buy (PartialFill)',plan,holderB);
+    const st=(await sdk.state.getPool(l.pool)).poolState, c=await sdk.state.getPoolConfig(st.config);
+    check(`[${l.tag}] curve complete and ready for migration`,BigInt(st.quoteReserve.toString())>=BigInt(c.migrationQuoteThreshold.toString())&&st.migrationProgress===2&&st.isMigrated===0,`reserve ${st.quoteReserve}, progress ${st.migrationProgress}`);
+  }
+  const k2=await keeperPhase('keeper run 2 (graduation)');
+  for (const l of launches) {
+    const m=k2.find(x=>x.message==='migration check'&&x.data?.mint===l.mint);
+    check(`[${l.tag}] keeper migrated the pool to DAMM v2 itself`,m?.data?.status==='migrated'&&Boolean(m.data.signature),`${m?.data?.signature}`);
+    const st=(await sdk.state.getPool(l.pool)).poolState, c=await sdk.state.getPoolConfig(st.config);
+    l.damm=deriveDammV2PoolAddress(DAMM_V2_MIGRATION_FEE_ADDRESS[c.migrationFeeOption],l.base.publicKey,hype);
+    check(`[${l.tag}] DBC migrated; derived DAMM v2 pool exists`,st.isMigrated===1&&Boolean(await connection.getAccountInfo(l.damm,'confirmed')),l.damm.toBase58());
+    await q("UPDATE pools SET status='migrated' WHERE pool_address=$1",[l.pool.toBase58()]);
+  }
+
+  for (const l of launches) {
+    const damm=(wallet,side,amount)=>prepareDammSwap(appConnection,{mint:l.mint,dbcPool:l.pool.toBase58(),pool:l.damm.toBase58(),wallet:wallet.publicKey,side,amount,slippageBps:100,platform:platform.publicKey});
+    await trade(l,'holder A app buy 10 test HYPE (DAMM v2)',await damm(holderA,'buy','10'),holderA);
+    await trade(l,'holder B app sell 50% (DAMM v2)',await damm(holderB,'sell',formatUnits((await bal(holderB.publicKey,l.base.publicKey))/2n,9)),holderB);
+  }
+  await keeperPhase('keeper run 3 (DAMM v2 fees)');
+  // Settlement after migration first drains any unsettled DBC fees; the keeper registers the DAMM v2 pool on its next run.
+  for (const l of launches) check(`[${l.tag}] fee pool registered the derived DAMM v2 pool`,(await fp(l)).dammPool.equals(l.damm),l.damm.toBase58());
+
+  for (const l of launches) {
+    const f=await fp(l), cb=BigInt(l.creatorBps);
+    for (const t of l.trades) { const exp=t.gross*100n/10_000n;
+      check(`[${l.tag}] ${t.venue} ${t.sig.slice(0,8)} fee 1%, Meteora 20%`,t.fee>=exp&&t.fee<=exp+1n&&t.protocol===t.fee*2000n/10_000n,`gross ${t.gross} fee ${t.fee}`); }
+    const eligible=l.trades.reduce((s,t)=>s+t.eligible,0n);
+    const st=await q('SELECT distributable_amount d,hymet_amount h,creator_amount c,holder_amount o FROM fee_settlements WHERE mint_address=$1',[l.mint]);
+    const sum=(k)=>st.reduce((s,r)=>s+BigInt(r[k]),0n), D=sum('d'),H=sum('h'),C=sum('c'),O=sum('o');
+    check(`[${l.tag}] every settlement: HYMET 20%, creator ${l.creatorBps/100}% / holders ${100-l.creatorBps/100}%`,st.length>0&&st.every(r=>BigInt(r.h)===BigInt(r.d)*2000n/10_000n&&BigInt(r.c)===(BigInt(r.d)-BigInt(r.h))*cb/10_000n&&BigInt(r.h)+BigInt(r.c)+BigInt(r.o)===BigInt(r.d)),`${st.length} settlements`);
+    check(`[${l.tag}] settled = eligible DBC + DAMM v2 swap fees (Meteora rounds DAMM down by ≤2)`,D<=eligible&&D>=eligible-2n,`DB ${D}, swaps ${eligible}`);
+    check(`[${l.tag}] DB totals = on-chain counters`,D===f.totalSettled&&H===f.totalPlatform,`settled ${f.totalSettled}, platform ${f.totalPlatform}`);
+    check(`[${l.tag}] creator share = on-chain claimable`,C===f.creatorClaimable&&(cb>0n||f.creatorClaimable===0n),`${C}`);
+    const ent=await q('SELECT e.reward_amount r,e.claimed_amount p,h.status FROM holder_reward_entitlements e JOIN holder_reward_epochs h USING(mint_address,epoch) WHERE e.mint_address=$1',[l.mint]);
+    const paid=ent.reduce((s,r)=>s+BigInt(r.p),0n);
+    check(`[${l.tag}] holders: settled = paid + unallocated + reserved; all paid and closed`,O===paid+f.holderUnallocated+f.holderReserved&&ent.length>0&&ent.every(r=>r.r===r.p&&r.status==='closed'),`${O} = ${paid} + ${f.holderUnallocated} + ${f.holderReserved}`);
+    const vault=(await getAccount(connection,getAssociatedTokenAddressSync(hype,l.feePool,true))).amount;
+    check(`[${l.tag}] HYPE vault = recorded liabilities`,vault===f.creatorClaimable+f.holderUnallocated+f.holderReserved,`vault ${vault}`);
+  }
+  save('automatic',{program:program.toBase58(),launches:launches.map(l=>({tag:l.tag,mint:l.mint,dbcPool:l.pool.toBase58(),dammPool:l.damm.toBase58(),trades:l.trades.map(t=>({...t,gross:t.gross.toString(),fee:t.fee.toString(),protocol:t.protocol.toString(),eligible:t.eligible.toString()}))}))});
+  console.log('PASS: Devnet automatic flow (5/95, 0/100): app trades, keeper settlement, automatic DAMM v2 migration, push payouts, exact accounting');
+}
+
 (async()=>{
   const genesis=await connection.getGenesisHash();
   assert(rehearsal?genesis!==MAINNET_GENESIS:genesis===DEVNET_GENESIS,'RPC is not Devnet');
@@ -200,6 +358,7 @@ async function nativeSplit(payer,platform) {
   const state=await connection.getAccountInfo(globalConfig);
   assert(state,'config not initialized; run --pre-init first');
   assert(state.data.subarray(8,40).equals(payer.publicKey.toBuffer())&&state.data.subarray(40,72).equals(platform.publicKey.toBuffer())&&state.data.subarray(72,104).equals(snapshot.publicKey.toBuffer()),'config does not match Devnet test authorities');
+  if (process.argv.includes('--automatic')) return automatic(payer,platform,snapshot,program);
   await rejected('re-initialize by upgrade authority (replay)',await initialize(payer),[payer],'already in use');
   const traderHype=await testHype(payer,payer.publicKey,1000_000_000_000n);
 
