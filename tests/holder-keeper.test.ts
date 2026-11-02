@@ -97,6 +97,6 @@ describe("holder payout keeper", () => {
     const { k, sent } = harness(feePool({ creatorBps: 5_000, unallocated: 0n, nextEpoch: 1n }), open, rows);
     const result = await runHolderPayouts(k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() });
     expect(sent.slice(0, 3)).toEqual(["pay chunk 0", "close epoch 0", "reindex"]);
-    expect(result).toMatchObject({ epoch: "1", skipped: expect.stringMatching(/payout minimum/) });
+    expect(result).toMatchObject({ epoch: "1", skipped: expect.stringMatching(/below the payout minimum/) });
   });
 });

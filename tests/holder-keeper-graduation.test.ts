@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { Connection, Keypair, PublicKey, type Transaction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
-const h = vi.hoisted(() => ({ sources: [] as { source: "dbc" | "damm"; dammDue?: boolean }[] }));
+const h = vi.hoisted(() => ({ sources: [] as { source: "dbc" | "damm"; dammDue?: boolean; nothingToCollect?: boolean }[] }));
 vi.mock("../lib/distributor-settlement", () => ({
   settlementInstructions: async () => {
     const next = h.sources.shift();
@@ -56,6 +56,14 @@ describe("keeper settlement right after graduation", () => {
     const { k, sent } = harness();
     await runHolderPayouts(k, token);
     expect(sent).toEqual(["settle dbc"]);
+  });
+
+  it.each(["dbc", "damm"] as const)("sends no %s settlement when nothing is collectible", async (source) => {
+    h.sources = [{ source, nothingToCollect: true }, { source: "damm" }];
+    const { k, sent } = harness();
+    await runHolderPayouts(k, token);
+    expect(sent).toEqual([]);
+    expect(h.sources).toHaveLength(1);
   });
 
   it("simulates a single settlement in dry runs", async () => {

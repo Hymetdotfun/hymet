@@ -145,6 +145,10 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   try {
     for (let pass = 0; pass < 2; pass++) {
       const settle = await settlementInstructions(k.connection, k.program, mint, new PublicKey(token.dbcPool), k.platform, k.authority.publicKey, k.authority.publicKey);
+      if (settle.nothingToCollect) {
+        k.log("settlement skipped", { mint: token.mint, source: settle.source, reason: "no collectible fees" });
+        break;
+      }
       const settleTx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...settle.instructions);
       if (k.dryRun) await k.simulate(settleTx, `settle ${settle.source}`);
       else await k.send(settleTx, `settle ${settle.source}`);
@@ -154,6 +158,11 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
     k.log("settlement skipped", e instanceof Error ? e.message : e);
   }
   pool = await readPool();
+  // No holder can reach a payout threshold when the whole undistributed pool (which bounds carry) is below the
+  // smallest one: skip the snapshot, the heaviest RPC read.
+  const policy = k.policy ?? HOLDER_PAYOUT_POLICY;
+  const smallest = policy.minPayout < policy.minPayoutNewAccount ? policy.minPayout : policy.minPayoutNewAccount;
+  if (pool.holderUnallocated < smallest) return { mint: token.mint, epoch: pool.nextEpoch.toString(), skipped: "undistributed holder rewards below the payout minimum" };
 
   // 3. One consistent snapshot: every token account of the mint read at one RPC context slot.
   const snapshot = await k.connection.getProgramAccounts(TOKEN_PROGRAM_ID, {

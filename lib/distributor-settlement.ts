@@ -4,7 +4,7 @@
 import { Connection, PublicKey, type TransactionInstruction } from "@solana/web3.js";
 import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { DynamicBondingCurveClient, DAMM_V2_MIGRATION_FEE_ADDRESS, deriveDammV2PoolAddress } from "@meteora-ag/dynamic-bonding-curve-sdk";
-import { CpAmm } from "@meteora-ag/cp-amm-sdk";
+import { CpAmm, getUnClaimLpFee } from "@meteora-ag/cp-amm-sdk";
 import BN from "bn.js";
 import { HYPE_MINT } from "./quote-assets";
 import { distributorAddresses, distributorSettlement, registerDistributorMigration } from "./distributor-engine";
@@ -20,8 +20,9 @@ export async function settlementInstructions(
   caller: PublicKey,
   /** Signer allowed to register the migrated pool: the creator or the snapshot authority. */
   registrar?: PublicKey,
-  /** dammDue: the DBC pool is already migrated, so once this drain lands the DAMM v2 position (and its registration) is next. */
-): Promise<{ source: "dbc" | "damm"; instructions: TransactionInstruction[]; dammDue?: boolean }> {
+  /** dammDue: the DBC pool is already migrated, so once this drain lands the DAMM v2 position (and its registration) is next.
+   *  nothingToCollect: no fees are claimable and no registration is pending, so sending would only cost fees. */
+): Promise<{ source: "dbc" | "damm"; instructions: TransactionInstruction[]; dammDue?: boolean; nothingToCollect?: boolean }> {
   const a = distributorAddresses(program, mint);
   const sdk = new DynamicBondingCurveClient(connection, "confirmed");
   const pool = await sdk.state.getPool(dbcPool);
@@ -34,6 +35,7 @@ export async function settlementInstructions(
   // Fees accrued by the final graduation swap remain claimable in DBC.
   // Drain that liability first; the next collection then handles the DAMM position.
   if (!pool.poolState.isMigrated || pool.poolState.partnerQuoteFee.gtn(0)) {
+    if (pool.poolState.partnerQuoteFee.isZero() && pool.poolState.partnerBaseFee.isZero()) return { source: "dbc", instructions: [], nothingToCollect: true };
     const claim = await sdk.partner.claimPartnerTradingFee({ feeClaimer: a.feePool, payer: caller, pool: dbcPool, maxBaseAmount: U64_MAX, maxQuoteAmount: U64_MAX });
     const ix = claim.instructions.find((i) => i.programId.equals(sdk.program.programId));
     if (!ix) throw Error("DBC claim instruction missing");
@@ -47,13 +49,17 @@ export async function settlementInstructions(
   const state = await connection.getAccountInfo(a.feePool, "confirmed");
   if (!state) throw Error("Distributor pool missing");
   const assigned = new PublicKey(state.data.subarray(104, 136));
-  if (assigned.equals(PublicKey.default)) {
+  const registering = assigned.equals(PublicKey.default);
+  if (registering) {
     if (!registrar) throw Error("Creator must register the migrated position before collection");
     instructions.push(registerDistributorMigration(program, mint, registrar, destination));
   } else if (!assigned.equals(destination)) throw Error("Registered migration destination mismatch");
   const positions = await cp.getUserPositionByPool(destination, a.feePool);
   if (positions.length !== 1) throw Error("Expected exactly one distributor-owned migration position");
   const p = positions[0];
+  // Registration is never skipped; an already registered position with no accrued fees is.
+  const pending = getUnClaimLpFee(damm, p.positionState);
+  if (!registering && pending.feeTokenA.isZero() && pending.feeTokenB.isZero()) return { source: "damm", instructions: [], nothingToCollect: true };
   const claim = await cp.claimPositionFee({ owner: a.feePool, feePayer: caller, pool: destination, position: p.position, positionNftAccount: p.positionNftAccount, tokenAMint: mint, tokenBMint: HYPE_MINT, tokenAVault: damm.tokenAVault, tokenBVault: damm.tokenBVault, tokenAProgram: TOKEN_PROGRAM_ID, tokenBProgram: TOKEN_PROGRAM_ID });
   const ix = claim.instructions.find((i) => i.programId.equals(cp._program.programId));
   if (!ix) throw Error("DAMM claim instruction missing");
