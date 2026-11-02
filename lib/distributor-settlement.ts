@@ -11,6 +11,17 @@ import { distributorAddresses, distributorSettlement, registerDistributorMigrati
 
 const U64_MAX = new BN("18446744073709551615");
 
+/** Anyone can open a DAMM v2 position owned by the fee-pool PDA on the canonical pool, so more than one may exist.
+ *  Every such position settles through the same on-chain split; settle the one with the most pending HYPE
+ *  (then the most permanently locked liquidity: the migration position) instead of refusing to settle at all. */
+export function pickSettlementPosition<T extends { pending: { feeTokenA: BN; feeTokenB: BN }; locked: BN }>(positions: T[]): T {
+  if (!positions.length) throw Error("Distributor-owned migration position missing");
+  return positions.reduce((best, x) => {
+    const byFee = x.pending.feeTokenB.cmp(best.pending.feeTokenB);
+    return byFee > 0 || (byFee === 0 && x.locked.gt(best.locked)) ? x : best;
+  });
+}
+
 export async function settlementInstructions(
   connection: Connection,
   program: PublicKey,
@@ -55,10 +66,9 @@ export async function settlementInstructions(
     instructions.push(registerDistributorMigration(program, mint, registrar, destination));
   } else if (!assigned.equals(destination)) throw Error("Registered migration destination mismatch");
   const positions = await cp.getUserPositionByPool(destination, a.feePool);
-  if (positions.length !== 1) throw Error("Expected exactly one distributor-owned migration position");
-  const p = positions[0];
+  if (!positions.length) throw Error("Distributor-owned migration position missing");
+  const { p, pending } = pickSettlementPosition(positions.map((p) => ({ p, pending: getUnClaimLpFee(damm, p.positionState), locked: p.positionState.permanentLockedLiquidity })));
   // Registration is never skipped; an already registered position with no accrued fees is.
-  const pending = getUnClaimLpFee(damm, p.positionState);
   if (!registering && pending.feeTokenA.isZero() && pending.feeTokenB.isZero()) return { source: "damm", instructions: [], nothingToCollect: true };
   const claim = await cp.claimPositionFee({ owner: a.feePool, feePayer: caller, pool: destination, position: p.position, positionNftAccount: p.positionNftAccount, tokenAMint: mint, tokenBMint: HYPE_MINT, tokenAVault: damm.tokenAVault, tokenBVault: damm.tokenBVault, tokenAProgram: TOKEN_PROGRAM_ID, tokenBProgram: TOKEN_PROGRAM_ID });
   const ix = claim.instructions.find((i) => i.programId.equals(cp._program.programId));
