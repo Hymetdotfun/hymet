@@ -7,7 +7,7 @@
 //      HYMET_KEEPER_MINTS (optional, comma-separated): only these mints, e.g. an instant-graduation run from
 //      scripts/graduation-watcher.mjs. Unset = every distributor token (the periodic run).
 // The keypair is read from disk and never printed.
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { Connection, Keypair, PublicKey, type Transaction } from "@solana/web3.js";
@@ -18,8 +18,24 @@ import { verifyDistributorDeployment } from "../lib/distributor-engine";
 import { runHolderPayouts } from "../lib/holder-keeper";
 import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
+import { keeperFetch } from "../lib/keeper-rpc";
 
 const RPC_TIMEOUT_MS = 30_000, REINDEX_TIMEOUT_MS = 180_000;
+
+// The indexer runs as a child process without blocking this one, so the RPC connection pool keeps servicing its
+// sockets meanwhile. Resumable (one signature per DB transaction): a timeout only defers payouts to the next run.
+function reindexDistributor() {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, ["scripts/index-distributor.mjs"], { stdio: "inherit", env: process.env });
+    const timer = setTimeout(() => child.kill("SIGTERM"), REINDEX_TIMEOUT_MS);
+    child.on("error", (e) => { clearTimeout(timer); reject(e); });
+    child.on("exit", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(Error(`Distributor indexer ${signal ? `stopped (${signal})` : `exited ${code}`}`));
+    });
+  });
+}
 
 async function main() {
   const send = process.argv.includes("--send");
@@ -29,10 +45,10 @@ async function main() {
   const programText = process.env.HYMET_DISTRIBUTOR_PROGRAM_ID, keypairPath = process.env.HYMET_KEEPER_KEYPAIR;
   if (!process.env.DATABASE_URL || !programText || !keypairPath) throw Error("Set DATABASE_URL, HYMET_DISTRIBUTOR_PROGRAM_ID and HYMET_KEEPER_KEYPAIR");
   // Bounded RPC requests: a stalled request fails the token's run (every step is resumable from chain state) instead of
-  // holding the keeper lock for minutes and delaying instant graduation.
+  // holding the keeper lock for minutes and delaying instant graduation. Reads that hit a dead socket are retried once.
   const connection = new Connection(process.env.HYMET_KEEPER_RPC_URL || process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com", {
     commitment: "confirmed",
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(RPC_TIMEOUT_MS) }),
+    fetch: keeperFetch(RPC_TIMEOUT_MS),
   });
   const mainnet = (await connection.getGenesisHash()) === MAINNET_GENESIS;
   if (send && mainnet) {
@@ -85,10 +101,9 @@ async function main() {
         simulate,
         send: async (tx: Transaction, label: string) => sendTx(tx, label),
         reindex: async () => {
-          // Bounded: the indexer is resumable (one signature per DB transaction), so a timeout only defers payouts to the next run.
           const start = Date.now();
           try {
-            execFileSync(process.execPath, ["scripts/index-distributor.mjs"], { stdio: "inherit", env: process.env, timeout: REINDEX_TIMEOUT_MS });
+            await reindexDistributor();
           } finally {
             log("reindex", { mint: t.mint_address, ms: Date.now() - start });
           }
