@@ -1,5 +1,19 @@
 import { limitedBody } from "./http";
+import { DEVNET_RPC_URL } from "./app-network";
 let requestSequence = 0;
+// Read retries on HTTP 429. Public Devnet rate-limits per method per 10-second window and answers with a Retry-After of
+// several seconds, so the Devnet test network gets a longer budget; every other endpoint keeps the original one.
+const RETRY = {
+  default: { attempts: 3, maxWait: 5_000, budget: 5_000 },
+  devnet: { attempts: 6, maxWait: 10_000, budget: 30_000 },
+};
+/** Diagnostic label only (never the URL, which can carry credentials). */
+export function rpcEndpointLabel(url: string) {
+  if (url === "https://api.mainnet-beta.solana.com") return "public-mainnet";
+  if (url === DEVNET_RPC_URL) return "devnet";
+  if (/^https?:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?\/?$/.test(url)) return "localnet";
+  return "configured-mainnet";
+}
 export async function forwardRpc(
   url: string,
   raw: string,
@@ -9,12 +23,10 @@ export async function forwardRpc(
   sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
 ) {
   const request = ++requestSequence;
-  const endpoint =
-    url === "https://api.mainnet-beta.solana.com"
-      ? "public-mainnet"
-      : "configured-mainnet";
+  const endpoint = rpcEndpointLabel(url);
+  const policy = endpoint === "devnet" ? RETRY.devnet : RETRY.default;
   const send = method === "sendTransaction";
-  let attempt = 0;
+  let attempt = 0, waited = 0;
   const failure = (reason: string, status: number) =>
     Response.json(
       {
@@ -61,7 +73,8 @@ export async function forwardRpc(
           if (Number.isFinite(deadline)) wait = Math.max(wait, deadline);
         }
         // Only rate-limited read calls are retried. Never replay a broadcast or wait past budget.
-        if (!send && status === 429 && attempt < 3 && wait <= 5000) {
+        if (!send && status === 429 && attempt < policy.attempts && wait <= policy.maxWait && waited + wait <= policy.budget) {
+          waited += wait;
           await sleep(wait);
           continue;
         }

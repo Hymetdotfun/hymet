@@ -12,8 +12,20 @@ if (programText === "CWDBD8de82UWLL3xZBd117t3uPoe25ZKy5TcHLLTg9xY")
   throw new Error("The configured distributor ID is the local placeholder");
 const rpc = new Connection(
   process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com",
-  "confirmed",
+  { commitment: "confirmed", disableRetryOnRateLimit: true },
 );
+// Rate-limited reads (HTTP 429, e.g. public Devnet) wait and retry, bounded to about two minutes. Each signature is
+// committed with the checkpoint in one DB transaction, so a run that still gives up resumes later without gaps.
+async function read(call) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      if (!/\b429\b|Too Many Requests/.test(String(error?.message)) || attempt >= 8) throw error;
+      await new Promise((r) => setTimeout(r, Math.min(20_000, 2_000 * 2 ** attempt)));
+    }
+  }
+}
 const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 
 try {
@@ -26,14 +38,16 @@ try {
   let before;
   let foundCursor = !cursor;
   for (;;) {
-    const page = await rpc.getSignaturesForAddress(
-      program,
-      {
-        limit: 1000,
-        ...(before ? { before } : {}),
-        ...(cursor ? { until: cursor } : {}),
-      },
-      "confirmed",
+    const page = await read(() =>
+      rpc.getSignaturesForAddress(
+        program,
+        {
+          limit: 1000,
+          ...(before ? { before } : {}),
+          ...(cursor ? { until: cursor } : {}),
+        },
+        "confirmed",
+      ),
     );
     if (!page.length) break;
     if (cursor && page.some((x) => x.signature === cursor)) foundCursor = true;
@@ -48,10 +62,12 @@ try {
   for (const row of ordered) {
     const tx = row.err
       ? null
-      : await rpc.getTransaction(row.signature, {
-          commitment: "confirmed",
-          maxSupportedTransactionVersion: 0,
-        });
+      : await read(() =>
+          rpc.getTransaction(row.signature, {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          }),
+        );
     if (!row.err && !tx?.meta)
       throw new Error(
         `Confirmed transaction ${row.signature} is unavailable from the configured RPC; cursor not advanced`,

@@ -123,3 +123,28 @@ it("separates transport failures from HTTP 429 and timeout without retry", async
   expect(text).toContain("transport or bounded-response failure");
   expect(text).not.toContain("SECRET");
 });
+it("labels the Devnet test endpoint and waits out Devnet Retry-After for reads only", async () => {
+  const limited = () => new Response("limited", { status: 429, headers: { "retry-after": "8" } });
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(limited()).mockResolvedValueOnce(limited()).mockResolvedValue(new Response('{"result":"EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"}'));
+  const sleep = vi.fn(async () => {});
+  const r = await forwardRpc("https://api.devnet.solana.com", "{}", "getGenesisHash", 1, fetcher, sleep);
+  expect(await r.json()).toEqual({ result: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG" });
+  expect(sleep.mock.calls).toEqual([[8000], [8000]]);
+  // The budget is bounded: four 8-second waits would exceed 30 s, so the fourth 429 is returned, labelled devnet.
+  const always = vi.fn<typeof fetch>().mockImplementation(async () => limited());
+  const failed = await (await forwardRpc("https://api.devnet.solana.com", "{}", "getGenesisHash", 1, always, async () => {})).text();
+  expect(always).toHaveBeenCalledTimes(4);
+  expect(failed).toContain("endpoint=devnet");
+  expect(failed).not.toContain("mainnet");
+  // A broadcast is never replayed, on Devnet either.
+  const sends = vi.fn<typeof fetch>().mockImplementation(async () => limited());
+  await forwardRpc("https://api.devnet.solana.com", "{}", "sendTransaction", 1, sends, async () => {});
+  expect(sends).toHaveBeenCalledTimes(1);
+});
+it("labels endpoints without exposing URLs", async () => {
+  const { rpcEndpointLabel } = await import("../lib/rpc-forward");
+  expect(rpcEndpointLabel("https://api.devnet.solana.com")).toBe("devnet");
+  expect(rpcEndpointLabel("http://127.0.0.1:19995")).toBe("localnet");
+  expect(rpcEndpointLabel("https://api.mainnet-beta.solana.com")).toBe("public-mainnet");
+  expect(rpcEndpointLabel("https://private.invalid/SECRET")).toBe("configured-mainnet");
+});

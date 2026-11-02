@@ -213,7 +213,7 @@ export function friendly(e: unknown) {
     return "Phantom is not available in this browser. Open the localhost launcher in a browser with Phantom installed and unlocked.";
   const s = e instanceof Error ? e.message || e.name : String(e);
   const rpc = s.match(
-    /RPC operation [A-Za-z]+: (?:HTTP \d+|timeout|transport or bounded-response failure); endpoint=(?:public|configured)-mainnet; attempts=\d+; request=\d+\.(?: Broadcast status UNKNOWN; check the saved signature\. Do not resend\.)?/,
+    /RPC operation [A-Za-z]+: (?:HTTP \d+|timeout|transport or bounded-response failure); endpoint=(?:public-mainnet|configured-mainnet|devnet|localnet); attempts=\d+; request=\d+\.(?: Broadcast status UNKNOWN; check the saved signature\. Do not resend\.)?/,
   );
   if (rpc) return rpc[0];
   if (/reject|4001/i.test(s))
