@@ -10,10 +10,19 @@ describe('application distributor safeguards',()=>{
     const result=await POST(new NextRequest('http://localhost/api/fees/transaction',{method:'POST',headers:{origin:'https://attacker.invalid'},body:'{}'}));
     expect(result.status).toBe(403);expect(fetcher).not.toHaveBeenCalled();
   });
+  it('builds only creator claims: settlement and migration are keeper-only',async()=>{
+    vi.stubEnv('HYMET_DISTRIBUTOR_VERIFIED','true');
+    const fetcher=vi.spyOn(globalThis,'fetch');
+    for(const action of ['collect','migrate']) {
+      const result=await POST(new NextRequest('http://localhost/api/fees/transaction',{method:'POST',headers:{origin:'http://localhost','content-type':'application/json'},body:JSON.stringify({action,mint:Keypair.generate().publicKey.toBase58(),wallet:Keypair.generate().publicKey.toBase58()})}));
+      expect(result.status).toBe(400);expect((await result.json()).error).toBe('Unknown fee action');
+    }
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it('keeps financial transaction construction disabled without owner verification',async()=>{
     vi.stubEnv('HYMET_DISTRIBUTOR_VERIFIED','false');
     const fetcher=vi.spyOn(globalThis,'fetch');
-    const result=await POST(new NextRequest('http://localhost/api/fees/transaction',{method:'POST',headers:{origin:'http://localhost','content-type':'application/json'},body:JSON.stringify({action:'collect',mint:Keypair.generate().publicKey.toBase58(),wallet:Keypair.generate().publicKey.toBase58()})}));
+    const result=await POST(new NextRequest('http://localhost/api/fees/transaction',{method:'POST',headers:{origin:'http://localhost','content-type':'application/json'},body:JSON.stringify({action:'creator',mint:Keypair.generate().publicKey.toBase58(),wallet:Keypair.generate().publicKey.toBase58()})}));
     expect(result.status).toBe(400);expect((await result.json()).error).toContain('not verified');expect(fetcher).not.toHaveBeenCalled();
   });
   it('never treats the validator placeholder as a production deployment',async()=>{

@@ -5,8 +5,12 @@ import {
   unpackMint,
   unpackAccount,
 } from "@solana/spl-token";
+// Devnet test mode only (lib/app-network.ts): Mainnet HYPE does not exist on Devnet, so the isolated Devnet build and this
+// app use a Devnet test mint. Ignored in every other build; the test-network guard rejects a missing or Mainnet value.
+const DEVNET_TEST_HYPE =
+  process.env.NEXT_PUBLIC_HYMET_TEST_NETWORK === "devnet" ? process.env.NEXT_PUBLIC_HYMET_TEST_HYPE_MINT : undefined;
 export const HYPE_MINT = new PublicKey(
-  "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+  DEVNET_TEST_HYPE || "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
 );
 export const HYPE_SOURCE = "https://pump.fun/docs/custom-pairs";
 export function quoteAsset(v: { quote?: string }) {

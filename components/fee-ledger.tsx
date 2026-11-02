@@ -77,17 +77,18 @@ function FeeLedgerWallet() {
   useEffect(() => {
     void load();
   }, [load]);
-  const feeAction=async(mint:string,action:'collect'|'migrate'|'creator')=>{
+  // The only wallet action here is the creator's own claim; collection, settlement, migration and holder payouts are keeper-only.
+  const claimCreatorFees=async(mint:string)=>{
     if(!publicKey || !signTransaction || !ledger?.chainVerified) return;
     setBusy(true);setClaimMessage('');
     try {
-      const response=await fetch('/api/fees/transaction',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mint,action,wallet:publicKey.toBase58()})});
+      const response=await fetch('/api/fees/transaction',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mint,action:'creator',wallet:publicKey.toBase58()})});
       const data=await response.json();
       if(!response.ok) throw Error(data.error || 'Fee transaction unavailable');
       const transaction=Transaction.from(Buffer.from(data.transaction,'base64'));
       if(!transaction.feePayer?.equals(publicKey)) throw Error('Transaction wallet mismatch');
       const signature=await executeWalletOperation(connection,transaction,publicKey,signTransaction,localStorage,data.lastValidBlockHeight);
-      setClaimMessage(`Confirmed ${action} · ${signature}. Indexed totals update after confirmed-chain indexing.`);
+      setClaimMessage(`Confirmed creator claim · ${signature}. Indexed totals update after confirmed-chain indexing.`);
       await load();
     } catch(error) {setClaimMessage(error instanceof Error?error.message:'Transaction failed');}
     finally {setBusy(false);}
@@ -151,19 +152,12 @@ function FeeLedgerWallet() {
                 stage={`${stage} · ${creatorPct}% creator / ${holderPct}% holders`}
                 amount={token.creatorBps > 0 ? (claimable === undefined ? undefined : `${formatHype(claimable, true).replace(" HYPE", "")} HYPE`) : "Automatic"}
                 note={token.creatorBps > 0 ? `Your creator share, settled on-chain on ${claimNetworkLabel("mainnet-beta")}. Holder rewards are paid automatically.` : "The full creator share goes to holders automatically. There is nothing to claim."}
-                action={token.creatorBps > 0 ? { label: hasClaim ? "Claim Creator Fees" : "No creator fees yet", disabled: busy || !hasClaim, onClick: () => void feeAction(token.mint, "creator") } : undefined}
+                action={token.creatorBps > 0 ? { label: hasClaim ? "Claim Creator Fees" : "No creator fees yet", disabled: busy || !hasClaim, onClick: () => void claimCreatorFees(token.mint) } : undefined}
                 advanced={
-                  <>
-                    <div className="damm-technical-grid">
-                      <div><span>Token mint</span><code>{token.mint}</code></div>
-                      <div><span>Allocation (immutable)</span><code>{creatorPct}% creator / {holderPct}% holders of the 80%; HYMET 20%</code></div>
-                    </div>
-                    <p className="creator-claim-note">Recovery tools. The keeper runs these automatically; use them only if automation is delayed.</p>
-                    <div className="trade-actions">
-                      <button type="button" className="creator-claim-secondary" disabled={busy} onClick={() => void feeAction(token.mint, "collect")}>Collect &amp; settle now</button>
-                      {token.migration.state === "graduating" && <button type="button" className="creator-claim-secondary" disabled={busy} onClick={() => void feeAction(token.mint, "migrate")}>Migrate now</button>}
-                    </div>
-                  </>
+                  <div className="damm-technical-grid">
+                    <div><span>Token mint</span><code>{token.mint}</code></div>
+                    <div><span>Allocation (immutable)</span><code>{creatorPct}% creator / {holderPct}% holders of the 80%; HYMET 20%</code></div>
+                  </div>
                 }
               >
                 <dl className="earn-status">

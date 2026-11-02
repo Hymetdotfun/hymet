@@ -31,7 +31,13 @@ export async function executeWalletOperation(c:Connection,tx:Transaction,wallet:
     if((error as {code?:number}).code===4001) storage.setItem(key,JSON.stringify({...record,phase:'failed'}));
     throw error;
   }
-  if(!message.equals(signed.serializeMessage())) throw Error('Phantom changed the reviewed transaction message');
+  if(!message.equals(signed.serializeMessage())) {
+    // Never sent from here, but Phantom's altered copy may carry a valid signature: journal it so a retry first checks
+    // its on-chain status and waits for blockhash expiry instead of risking a second, overlapping operation.
+    const altered=signed.signature?bs58.encode(signed.signature):undefined;
+    storage.setItem(key,JSON.stringify(altered?{...record,phase:'signed',signature:altered}:{...record,phase:'failed'}));
+    throw Error(`Phantom changed the reviewed transaction message; nothing was sent${altered?` · its signature ${altered} is checked on-chain before any retry`:''}`);
+  }
   for(const signer of temporary) {
     const current=signed.signatures.find(s=>s.publicKey.equals(signer.publicKey));
     if(signer.signature && !current?.signature) signed.addSignature(signer.publicKey,signer.signature);

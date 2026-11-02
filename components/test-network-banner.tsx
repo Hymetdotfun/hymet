@@ -12,6 +12,7 @@ export function TestNetworkBanner() {
   const [busy, setBusy] = useState(false);
   if (!testNetworkRequested()) return null;
   const problem = testNetworkProblem();
+  const devnet = process.env.NEXT_PUBLIC_HYMET_TEST_NETWORK === "devnet";
   const fund = async () => {
     if (!publicKey) return;
     setBusy(true);
@@ -19,7 +20,7 @@ export function TestNetworkBanner() {
     try {
       const r = await fetch("/api/test-network/fund", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: publicKey.toBase58() }) });
       const j = await r.json();
-      setStatus(r.ok ? `Sent ${j.sol} test SOL and ${j.hype} test HYPE` : j.error || "Funding failed");
+      setStatus(r.ok ? (j.sol ? `Sent ${j.sol} test SOL and ${j.hype} test HYPE` : `Sent ${j.hype} Devnet test HYPE`) : j.error || "Funding failed");
     } catch {
       setStatus("Funding failed");
     } finally {
@@ -31,10 +32,10 @@ export function TestNetworkBanner() {
     return <div role="alert" style={style}>TEST NETWORK MISCONFIGURED: {problem}. All transactions are disabled.</div>;
   return (
     <div role="status" style={style}>
-      <span>TEST NETWORK · Local validator (Mainnet fork) · No real funds · Phantom: Testnet Mode → Solana Localnet</span>
+      <span>{devnet ? "TEST NETWORK · Solana Devnet · Test HYPE, no real funds · Phantom: Testnet Mode → Solana Devnet" : "TEST NETWORK · Local validator (Mainnet fork) · No real funds · Phantom: Testnet Mode → Solana Localnet"}</span>
       {publicKey && (
         <button type="button" onClick={() => void fund()} disabled={busy} style={{ font: "inherit", padding: "2px 10px", border: "2px solid #1a1200", background: "#fff", cursor: "pointer" }}>
-          Fund this wallet with test SOL + HYPE
+          {devnet ? "Fund this wallet with Devnet test HYPE" : "Fund this wallet with test SOL + HYPE"}
         </button>
       )}
       {status && <span>{status}</span>}
