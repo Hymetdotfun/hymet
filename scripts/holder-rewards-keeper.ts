@@ -4,6 +4,8 @@
 //   --min-payout=<HYPE base units>  lowers both payout minimums (small-amount verification runs only)
 // Env: DATABASE_URL, HYMET_DISTRIBUTOR_PROGRAM_ID, HYMET_KEEPER_KEYPAIR (snapshot authority JSON),
 //      MAINNET_RPC_URL (or HYMET_KEEPER_RPC_URL for a local validator / Devnet).
+//      HYMET_KEEPER_MINTS (optional, comma-separated): only these mints, e.g. an instant-graduation run from
+//      scripts/graduation-watcher.mjs. Unset = every distributor token (the periodic run).
 // The keypair is read from disk and never printed.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -17,6 +19,8 @@ import { runHolderPayouts } from "../lib/holder-keeper";
 import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
 
+const RPC_TIMEOUT_MS = 30_000;
+
 async function main() {
   const send = process.argv.includes("--send");
   const minArg = process.argv.find((a) => a.startsWith("--min-payout="))?.slice("--min-payout=".length);
@@ -24,13 +28,19 @@ async function main() {
   const policy = minArg ? { ...HOLDER_PAYOUT_POLICY, minPayout: BigInt(minArg), minPayoutNewAccount: BigInt(minArg) } : HOLDER_PAYOUT_POLICY;
   const programText = process.env.HYMET_DISTRIBUTOR_PROGRAM_ID, keypairPath = process.env.HYMET_KEEPER_KEYPAIR;
   if (!process.env.DATABASE_URL || !programText || !keypairPath) throw Error("Set DATABASE_URL, HYMET_DISTRIBUTOR_PROGRAM_ID and HYMET_KEEPER_KEYPAIR");
-  const connection = new Connection(process.env.HYMET_KEEPER_RPC_URL || process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com", "confirmed");
+  // Bounded RPC requests: a stalled request fails the token's run (every step is resumable from chain state) instead of
+  // holding the keeper lock for minutes and delaying instant graduation.
+  const connection = new Connection(process.env.HYMET_KEEPER_RPC_URL || process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com", {
+    commitment: "confirmed",
+    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(RPC_TIMEOUT_MS) }),
+  });
   const mainnet = (await connection.getGenesisHash()) === MAINNET_GENESIS;
   if (send && mainnet) {
     assertMainnetTransactionsEnabled();
     if (!holderPayoutsLive()) throw Error("Holder payouts are not owner-verified (HYMET_LAUNCH_MODE=distributor, HYMET_DISTRIBUTOR_*_VERIFIED, HYMET_HOLDER_PAYOUTS_VERIFIED)");
   }
   const program = new PublicKey(programText), platform = configuredPlatformFeeRecipient();
+  const onlyMints = process.env.HYMET_KEEPER_MINTS ? process.env.HYMET_KEEPER_MINTS.split(",").map((m) => new PublicKey(m.trim()).toBase58()) : null;
   const authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(keypairPath, "utf8"))));
   const config = await verifyDistributorDeployment(connection, program, platform);
   const configState = await connection.getAccountInfo(config, "confirmed");
@@ -41,8 +51,8 @@ async function main() {
   const log = (message: string, data?: unknown) => console.log(JSON.stringify({ at: new Date().toISOString(), message, ...(data === undefined ? {} : { data }) }));
   try {
     const tokens = (await db.query(
-      "SELECT t.mint_address,p.pool_address FROM tokens t JOIN pools p USING(mint_address) WHERE t.distributor_program_id=$1 AND t.holder_share_of_remaining_bps>0 AND p.protocol='meteora_dbc' ORDER BY t.created_at",
-      [program.toBase58()],
+      "SELECT t.mint_address,p.pool_address FROM tokens t JOIN pools p USING(mint_address) WHERE t.distributor_program_id=$1 AND t.holder_share_of_remaining_bps>0 AND p.protocol='meteora_dbc' AND ($2::text[] IS NULL OR t.mint_address=ANY($2)) ORDER BY t.created_at",
+      [program.toBase58(), onlyMints],
     )).rows;
     const simulate = async (tx: Transaction, label: string, extraSigners: Keypair[] = []) => {
       tx.feePayer = authority.publicKey;

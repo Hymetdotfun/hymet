@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
@@ -9,7 +10,13 @@ import { formatUnits, prepareDbcSwap, QUICK_PERCENTS, quickAmount, quoteDbcSwap,
 import { prepareDammSwap, quoteDammSwap } from "../lib/damm-swap";
 import { executeWalletOperation } from "../lib/wallet-operation";
 
-type Props = { mint: string; pool?: string; poolStatus?: string; protocol?: string; dbcPool?: string; ticker: string };
+type Props = { mint: string; pool?: string; poolStatus?: string; protocol?: string; dbcPool?: string; ticker: string; tokenStatus?: string };
+type Graduation = { status: "bonding" | "graduating" | "graduated" | "unknown"; dammPool?: string };
+// Reads the chain server-side, records a verified graduation and queues the keeper when the curve is complete.
+const checkGraduation = async (mint: string): Promise<Graduation | undefined> => {
+  const r = await fetch(`/api/graduation/${encodeURIComponent(mint)}`, { method: "POST", cache: "no-store" }).catch(() => undefined);
+  return r?.ok ? ((await r.json()) as Graduation) : undefined;
+};
 const amount = (n: bigint, d: number) => {
   const s = (Number(n) / 10 ** d).toLocaleString("en-US", { maximumSignificantDigits: 8 });
   return s;
@@ -20,7 +27,8 @@ export function TradePanel(props: Props) {
   return <TradeForm {...props} />;
 }
 
-function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker }: Props) {
+function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker, tokenStatus }: Props) {
+  const router = useRouter();
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const [side, setSide] = useState<SwapSide>("buy"), [value, setValue] = useState(""), [slippage, setSlippage] = useState("1");
@@ -32,6 +40,23 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker }: Props)
   const enabled = mainnetTransactionsEnabled();
   // After graduation the DAMM v2 pool is traded, verified against the launch's own DBC pool on every quote and review.
   const damm = protocol === "meteora_damm_v2";
+  // Complete curve, migration not yet confirmed: DBC trading is closed, so the form is replaced until DAMM v2 opens.
+  const [migrating, setMigrating] = useState(!damm && tokenStatus === "graduating");
+  const transitioning = migrating && !damm;
+  useEffect(() => {
+    if (!transitioning) return;
+    let alive = true, delay = 3_000, timer = 0;
+    const tick = async () => {
+      const g = await checkGraduation(mint);
+      if (!alive) return;
+      // Graduated: re-render the page from the index, which now lists the verified DAMM v2 pool.
+      if (g?.status === "graduated") { router.refresh(); delay = 5_000; }
+      else delay = g ? 3_000 : Math.min(15_000, delay * 2); // back off while the RPC or index is unavailable
+      timer = window.setTimeout(() => void tick(), delay);
+    };
+    void tick();
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [transitioning, mint, router]);
   const tradable = Boolean(pool) && poolStatus === "active" && (!damm || Boolean(dbcPool));
   const blocked = !enabled ? "Mainnet transactions are disabled in this build." : !tradable ? (poolStatus === "migrated" ? "This token has graduated; its DAMM v2 pool is being verified. Refresh in a moment." : damm ? "The DAMM v2 pool cannot be verified without its launch pool." : "No active DBC pool is verified for this token.") : !platform ? "Platform fee wallet is not configured." : "";
 
@@ -73,7 +98,11 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker }: Props)
       const q = { mint, pool, side, amount: value.trim(), slippageBps: Math.round(Number(slippage) * 100), platform: new PublicKey(platform) };
       (damm ? quoteDammSwap(connection, { ...q, dbcPool: dbcPool! }) : quoteDbcSwap(connection, q))
         .then((q) => { if (alive) setPreview({ key: previewKey, text: `≈ ${formatUnits(q.expectedOut, q.outDecimals)} ${side === "buy" ? ticker.toUpperCase() : "HYPE"} · minimum ${formatUnits(q.minimumOut, q.outDecimals)}` }); })
-        .catch((e) => { if (alive) setPreview({ key: previewKey, text: e instanceof Error ? e.message : "Quote unavailable", error: true }); });
+        .catch((e) => {
+          if (!alive) return;
+          if (!damm && e instanceof Error && /Bonding curve is complete/.test(e.message)) setMigrating(true);
+          setPreview({ key: previewKey, text: e instanceof Error ? e.message : "Quote unavailable", error: true });
+        });
     }, 600);
     return () => { alive = false; window.clearTimeout(timer); };
   }, [previewKey, blocked, pool, value, side, slippage, connection, mint, platform, ticker, damm, dbcPool]);
@@ -97,6 +126,8 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker }: Props)
     try {
       const sig = await executeWalletOperation(connection, plan.tx, publicKey, signTransaction, window.localStorage, plan.lastValidBlockHeight, undefined, SWAP_JOURNAL);
       setSignature(sig); setPlan(null); setStatus(`Swap confirmed on ${activeNetworkLabel("Mainnet")}.`); void refreshBalances();
+      // A confirmed DBC buy may have completed the curve: start migration at once instead of waiting for the keeper.
+      if (!damm && side === "buy") void checkGraduation(mint).then((g) => { if (g?.status === "graduating" || g?.status === "graduated") setMigrating(true); });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Swap failed";
       const sig = message.match(/[1-9A-HJ-NP-Za-km-z]{80,90}/)?.[0];
@@ -105,6 +136,15 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker }: Props)
     } finally { setBusy(false); }
   };
   const inLabel = side === "buy" ? "HYPE" : ticker.toUpperCase(), outLabel = side === "buy" ? ticker.toUpperCase() : "HYPE";
+  if (transitioning)
+    return (
+      <div className="trade-review" role="status" aria-live="polite">
+        <b>Migrating to DAMM v2</b>
+        <small>The bonding curve is complete. HYMET is moving the liquidity to a Meteora DAMM v2 pool; buying and selling reopen here automatically once the migration is confirmed.</small>
+        {status && <small>{status}</small>}
+        {signature && <a href={`https://solscan.io/tx/${encodeURIComponent(signature)}`} target="_blank" rel="noreferrer">View your transaction ↗</a>}
+      </div>
+    );
   return (
     <>
       <div className="trade-actions" role="group" aria-label="Trade side">
