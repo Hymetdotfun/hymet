@@ -23,9 +23,11 @@ target/
 *.so
 meteora-dbc-hype-claude.zip
 photo_2026-10-30_15-25-02.jpg
-README.md
 AGENTS.md
 docs/MAINNET-DEPLOYMENT.md
 .hymet-test-network/
 # Inside the workspace Cargo uses the root Cargo.lock; this per-package lock is stale and unused.
 programs/hymet-rewards-distributor/Cargo.lock
+
+# Local copy of the pre-2026-11-03 README (restored from the build host), not for publication
+README.previous.md

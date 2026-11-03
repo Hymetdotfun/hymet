@@ -11,7 +11,7 @@ A guarded development mode that runs the HYMET app against a loopback `solana-te
 | `HYMET_TEST_RPC_URL` | loopback validator, e.g. `http://127.0.0.1:19995` |
 | `HYMET_TEST_PUBLIC_ORIGIN` | the app origin, e.g. `http://localhost:3917` (local metadata URLs) |
 | `NEXT_PUBLIC_ENABLE_MAINNET`, `ENABLE_MAINNET` | `false` (required) |
-| `DATABASE_URL` | the test database (`hymet_validator_app`) |
+| `DATABASE_URL` | a dedicated, throwaway test database |
 | `HYMET_PLATFORM_FEE_RECIPIENT` | a local test wallet, never a production address |
 
 ## Guards (`lib/app-network.ts`, tested in `tests/test-network.test.ts`)
@@ -62,20 +62,13 @@ A guarded development mode that runs the HYMET app against a loopback `solana-te
   Tokens still on their curve keep DBC trading.
 - The local validator keeps only about a minute of transaction history (default ledger size). Older signatures, such as a migration transaction, cannot be fetched later; the verified pool state is still recorded.
 
-## VPS environment (2026-11-01)
+## Remote test host
 
-| Component | Location |
-|---|---|
-| App tree | `/srv/hymet-build/testnet-app` |
-| Validator | label `meteora-funded-v14`, RPC `127.0.0.1:19995`, reviewed binary `f0ec833a…` |
-| App | `127.0.0.1:3917` |
-| Setup (fresh ledger + build + start) | `work/testnet-setup.sh` |
-| Rebuild/restart the app only | `work/testnet-app-restart.sh` |
-
-Tunnels from the workstation:
+The validator and app can run on a separate build host instead of the workstation. Bind both to loopback there
+(validator RPC e.g. `127.0.0.1:19995`, app `127.0.0.1:3917`) and reach them through SSH port forwarding:
 
 ```bash
-ssh -N -L 3917:127.0.0.1:3917 -L 8899:127.0.0.1:19995 -L 8900:127.0.0.1:19996 root@167.71.200.145
+ssh -N -L 3917:127.0.0.1:3917 -L 8899:127.0.0.1:19995 -L 8900:127.0.0.1:19996 <user>@<build-host>
 ```
 
 Phantom: Settings → Developer Settings → Testnet Mode on → network **Solana Localnet** (`localhost:8899`). Use a separate test account.
