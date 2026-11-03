@@ -10,7 +10,7 @@ import {
   metadataJson,
   MetadataOperationError,
 } from "../../../lib/metadata-service";
-import { testNetworkRequested } from "../../../lib/app-network";
+import { mainnetTransactionsEnabled, testNetworkRequested } from "../../../lib/app-network";
 import { saveTestFile } from "../../../lib/test-network-files";
 export const runtime = "nodejs";
 const used = new Map<string, number>();
@@ -52,6 +52,9 @@ export async function POST(req: NextRequest) {
   try {
     if (!sameOrigin(req))
       return new NextResponse("Origin denied", { status: 403 });
+    // Uploads only serve a launch; none can follow while launches are disabled (keeps Pinata storage unused).
+    if (!mainnetTransactionsEnabled())
+      return NextResponse.json({ error: "Launches are not open yet" }, { status: 403 });
     const testFiles = testNetworkRequested();
     if (!testFiles && !process.env.PINATA_JWT)
       return NextResponse.json(

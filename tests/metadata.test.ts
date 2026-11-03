@@ -1,4 +1,4 @@
-import { it, expect, vi, afterEach } from "vitest";
+import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { createPrivateKey, sign } from "node:crypto";
 import { Keypair, SystemProgram, Connection } from "@solana/web3.js";
@@ -14,6 +14,11 @@ import { POST } from "../app/api/metadata/route";
 import { defaults } from "../lib/config";
 import { verifyMetadataBytes } from "../lib/metadata";
 import { png500 } from "./fixtures/png-500";
+// These tests model open launches; the closed state is covered separately.
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_ENABLE_MAINNET", "true");
+  vi.stubEnv("ENABLE_MAINNET", "true");
+});
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -247,4 +252,14 @@ it("verifies metadata content and immutability from its on-chain Borsh prefix", 
       "https://example.com/meta",
     ),
   ).toThrow("immutability");
+});
+it("refuses uploads while launches are disabled, before touching storage", async () => {
+  vi.stubEnv("NEXT_PUBLIC_ENABLE_MAINNET", "false");
+  vi.stubEnv("ENABLE_MAINNET", "false");
+  vi.stubEnv("PINATA_JWT", "unit-test-placeholder");
+  const fetchSpy = vi.spyOn(globalThis, "fetch");
+  const r = await POST(new NextRequest("http://localhost/api/metadata", { method: "POST", headers: { origin: "http://localhost" } }));
+  expect(r.status).toBe(403);
+  expect(await r.json()).toEqual({ error: "Launches are not open yet" });
+  expect(fetchSpy).not.toHaveBeenCalled();
 });

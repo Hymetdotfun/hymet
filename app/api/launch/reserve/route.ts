@@ -4,9 +4,12 @@ import { PublicKey } from "@solana/web3.js";
 import { databasePool } from "../../../../lib/db";
 import { normalizeName, normalizeTicker } from "../../../../lib/hymet-policy";
 import { limitedBody, sameOrigin } from "../../../../lib/http";
+import { mainnetTransactionsEnabled } from "../../../../lib/app-network";
 export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   if (!sameOrigin(req)) return NextResponse.json({ error: "Origin denied" }, { status: 403 });
+  // No reservation can lead to a launch while launches are disabled; do not hold names in the production index.
+  if (!mainnetTransactionsEnabled()) return NextResponse.json({ error: "Launches are not open yet" }, { status: 403 });
   let client;
   try {
     if (req.headers.get("content-type")?.split(";")[0] !== "application/json") return NextResponse.json({error:"JSON request required"},{status:415});

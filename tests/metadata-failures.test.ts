@@ -1,4 +1,4 @@
-import { it, expect, vi, afterEach } from "vitest";
+import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { Keypair } from "@solana/web3.js";
 import { createPrivateKey, sign } from "node:crypto";
@@ -10,6 +10,11 @@ import {
   metadataPreparationError,
 } from "../lib/metadata-preparation";
 import { png500 } from "./fixtures/png-500";
+// These tests model open launches; the closed state is covered separately.
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_ENABLE_MAINNET", "true");
+  vi.stubEnv("ENABLE_MAINNET", "true");
+});
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
