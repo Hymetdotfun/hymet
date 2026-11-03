@@ -25,9 +25,7 @@ meteora-dbc-hype-claude.zip
 photo_2026-10-30_15-25-02.jpg
 README.md
 AGENTS.md
-Anchor.toml
-Cargo.toml
-Cargo.lock
-rust-toolchain.toml
 docs/MAINNET-DEPLOYMENT.md
 .hymet-test-network/
+# Inside the workspace Cargo uses the root Cargo.lock; this per-package lock is stale and unused.
+programs/hymet-rewards-distributor/Cargo.lock

@@ -23,8 +23,8 @@
   "mainnetFinancialOperations": false,
   "holderSplits": false,
   "programArtifact": "target/deploy/hymet_rewards_distributor.so",
-  "programSha256": "f0ec833ae4e78d350cda078d46158e2968324a12289e0943781593546e697105",
-  "programBytes": 506440,
+  "programSha256": "fda10de4da728442da4a42a63bb1f5d8df614e49f8421c656ee2ca67f3be3e7b",
+  "programBytes": 509112,
   "upgradeAuthority": "9G9v3Ax4K2prmVQfDzp2HY6YYZ5UFmCo24761pgEmMo7",
   "initialization": {
     "instruction": "initialize",
