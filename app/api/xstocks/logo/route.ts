@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import { localRequest, sameOrigin } from "../../../../lib/http";
+import { sameOrigin, trustedHost } from "../../../../lib/http";
 import { officialXstocks } from "../../../../lib/xstocks-registry";
 import { issuerLogo } from "../../../../lib/xstocks-logo";
 
 export async function GET(req: NextRequest) {
   if (
-    !localRequest(req) ||
+    !trustedHost(req) ||
     req.headers.get("sec-fetch-site") === "cross-site" ||
     (req.headers.get("origin") && !sameOrigin(req))
   )

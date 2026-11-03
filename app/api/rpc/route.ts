@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { limitedBody, localRequest, sameOrigin } from "../../../lib/http";
+import { limitedBody, sameOrigin, trustedHost } from "../../../lib/http";
 import { PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { forwardRpc } from "../../../lib/rpc-forward";
@@ -24,8 +24,8 @@ const allowed = new Set([
 ]);
 export async function POST(req: NextRequest) {
   try {
-    if (!localRequest(req))
-      return new NextResponse("Loopback host required", { status: 403 });
+    if (!trustedHost(req))
+      return new NextResponse("Loopback or configured public host required", { status: 403 });
     if (req.headers.get("origin") && !sameOrigin(req))
       return new NextResponse("Origin denied", { status: 403 });
     const network = req.nextUrl.searchParams.get("network") || APP_NETWORK;
