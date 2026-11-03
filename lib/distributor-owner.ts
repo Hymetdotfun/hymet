@@ -8,7 +8,7 @@ import { decodeProgramData, distributorConfigAddress, initializeDistributorInstr
 
 /** Phantom inserts its own priority-fee instruction into a transaction that sets no compute-unit price, which changes the
  *  reviewed message (and the console then refuses to send it). An explicit price keeps the message exactly as reviewed;
- *  20,000 micro-lamports × 50,000 units adds at most 1,000 lamports. */
+ *  20,000 micro-lamports Ã— 50,000 units adds at most 1,000 lamports. */
 export const OWNER_COMPUTE_UNITS = 50_000;
 export const OWNER_PRIORITY_MICROLAMPORTS = 20_000;
 const ownerBudget = () => [
