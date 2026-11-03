@@ -1,5 +1,6 @@
 <p align="center">
-  <img src=".github/assets/hymet-banner.svg" alt="HYMET: Where HYPE launches" width="100%">
+  <<img width="2086" height="754" alt="b77b5de2-6dd9-4edc-8c29-03735d180977" src="https://github.com/user-attachments/assets/df606861-946c-4b85-87e1-25069ec48c72" />
+">
 </p>
 
 <p align="center">
