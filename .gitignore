@@ -5,6 +5,8 @@ next-dev/
 next-preview-*/
 coverage/
 dist/
+# The patched bigint-buffer replacement is source, not build output.
+!vendor/bigint-buffer/dist/
 build-output/
 work/
 target/
