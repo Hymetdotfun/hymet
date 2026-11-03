@@ -1,0 +1,31 @@
+HYMET
+Copyright 2026 Hymetdotfun
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE),
+except for the third-party material listed below, which keeps its own license.
+
+-------------------------------------------------------------------------------
+Third-party material included in this repository
+-------------------------------------------------------------------------------
+
+lib/idl/damm-v2-pool.json
+  Pool account schema extracted, unchanged, from the Meteora DAMM v2 SDK IDL
+  (https://github.com/MeteoraAg/damm-v2-sdk, commit a8fadfac18f63d1e3a5af7170d4b9bdc781bdc15,
+  src/idl/cp_amm.json).
+  Copyright (c) 2026 Meteora. Licensed under the MIT License; see
+  lib/idl/LICENSE-METEORA-MIT.
+
+public/hymet-landscape.jpg
+  Photograph by akhil s (@mt_fujifilm) on Unsplash
+  (https://unsplash.com/photos/a-calm-lake-bordered-by-a-dense-forest-and-mountain-989LBbYsnfw).
+  Used under the Unsplash License (https://unsplash.com/license); it is not
+  covered by the Apache License. See public/ASSET-SOURCES.md.
+
+vendor/bigint-buffer
+  HYMET's own bounds-checked, pure-JavaScript implementation of the
+  bigint-buffer 1.1.5 API (GHSA-3gc7-fjrx-p6mg). It contains no code from the
+  upstream package (https://github.com/no2chem/bigint-buffer, Apache-2.0),
+  whose interface it reproduces.
+
+Dependencies installed through npm and Cargo are not included in this
+repository; each is distributed under its own license.

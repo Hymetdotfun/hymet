@@ -30,6 +30,7 @@
 - [Run it locally](#run-it-locally)
 - [Documentation](#documentation)
 - [Security](#security)
+- [License](#license)
 
 ## What HYMET is
 
@@ -224,3 +225,8 @@ problems.
 
 The distributor program has had an internal security review and a reproducible build. It has **not** had an external
 audit. Trading launched tokens carries market risk; nothing here is financial advice.
+
+## License
+
+HYMET is licensed under the [Apache License 2.0](LICENSE). Third-party material in this repository keeps its own
+license; see [NOTICE](NOTICE).
