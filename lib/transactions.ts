@@ -448,7 +448,8 @@ export async function buildPlan(
   let fee = 0n;
   for (const s of steps) {
     s.tx.instructions.unshift(
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 1000000 }),
+      ComputeBudgetProgram.setComputeUnitLimit({ units: LAUNCH_COMPUTE_UNITS }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: LAUNCH_PRIORITY_MICROLAMPORTS }),
     );
     s.tx.feePayer = creator;
     s.tx.recentBlockhash = latest.blockhash;
@@ -537,6 +538,12 @@ export function remainingRequirement(p: Plan) {
     (quoteAsset(p.values).native ? p.buy : 0n)
   );
 }
+/** Phantom inserts its own priority-fee instruction into a transaction that sets no compute-unit price, which changes
+ *  the reviewed message, and signReviewedTransaction then (correctly) refuses it. An explicit price keeps the message
+ *  exactly as reviewed. 20,000 micro-lamports x 1,000,000 units adds at most 20,000 lamports per launch step; the fee
+ *  estimate shown before signing includes it. */
+export const LAUNCH_COMPUTE_UNITS = 1_000_000;
+export const LAUNCH_PRIORITY_MICROLAMPORTS = 20_000;
 export async function signReviewedTransaction(
   tx: Transaction,
   payer: PublicKey,

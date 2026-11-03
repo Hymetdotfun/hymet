@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  ComputeBudgetProgram,
   Connection,
   Keypair,
   PublicKey,
@@ -27,7 +28,7 @@ import {
   verifyHypeMint,
   hypeBalance,
 } from "../lib/quote-assets";
-import { buildPlan, remainingRequirement } from "../lib/transactions";
+import { buildPlan, LAUNCH_PRIORITY_MICROLAMPORTS, remainingRequirement, signReviewedTransaction } from "../lib/transactions";
 import { defaults, curve } from "../lib/config";
 import {
   recoveryRecord,
@@ -198,6 +199,24 @@ it("constructs HYPE config + pool + protected buy with separate SOL and HYPE req
     "swap",
   ]);
   expect(ix[0].keys.some((k) => k.pubkey.equals(HYPE_MINT))).toBe(true);
+  // Every launch step sets an explicit compute-unit price, so Phantom (which adds its own when none is set) signs the
+  // reviewed message unchanged; a wallet that still alters it is refused before anything is sent.
+  const priced = (t: (typeof plan.steps)[number]["tx"]) =>
+    t.instructions.some((i) => i.programId.equals(ComputeBudgetProgram.programId) && i.data[0] === 3);
+  for (const step of plan.steps) {
+    const price = step.tx.instructions.find((i) => i.programId.equals(ComputeBudgetProgram.programId) && i.data[0] === 3);
+    expect(price?.data.readBigUInt64LE(1)).toBe(BigInt(LAUNCH_PRIORITY_MICROLAMPORTS));
+    const reviewed = Buffer.from(step.tx.serializeMessage());
+    if (!priced(step.tx)) step.tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }));
+    expect(Buffer.from(step.tx.serializeMessage()).equals(reviewed)).toBe(true);
+  }
+  const last = plan.steps[plan.steps.length - 1];
+  await expect(
+    signReviewedTransaction(last.tx, owner, last.signers, async (t) => {
+      t.instructions.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }));
+      return t;
+    }),
+  ).rejects.toThrow("Wallet changed the reviewed transaction message");
   expect(ix[1].keys.some((k) => k.pubkey.equals(HYPE_MINT))).toBe(true);
   expect(
     plan.steps
