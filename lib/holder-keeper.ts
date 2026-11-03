@@ -27,7 +27,13 @@ export type KeeperContext = {
   log: (message: string, data?: unknown) => void;
   dryRun: boolean;
   policy?: typeof HOLDER_PAYOUT_POLICY;
+  /** Minimum slots between holder snapshots (the advertised payout interval). Migration, registration and settlement
+   *  still run on every tick, so a short timer serves instant graduation without paying holders every few minutes. */
+  payoutIntervalSlots?: bigint;
 };
+
+/** Never fund an epoch the keeper cannot finish: planned fees and new accounts plus the epoch rent, with headroom. */
+export const KEEPER_SOL_HEADROOM_LAMPORTS = 5_000_000n;
 
 /** RewardEpoch account: 8-byte discriminator, then the program's Borsh layout. */
 export function decodeRewardEpoch(data: Buffer) {
@@ -167,6 +173,10 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   const policy = k.policy ?? HOLDER_PAYOUT_POLICY;
   const smallest = policy.minPayout < policy.minPayoutNewAccount ? policy.minPayout : policy.minPayoutNewAccount;
   if (pool.holderUnallocated < smallest) return { mint: token.mint, epoch: pool.nextEpoch.toString(), skipped: "undistributed holder rewards below the payout minimum" };
+  if (k.payoutIntervalSlots && pool.lastSnapshotSlot > 0n) {
+    const due = pool.lastSnapshotSlot + k.payoutIntervalSlots, slot = BigInt(await k.connection.getSlot("confirmed"));
+    if (slot < due) return { mint: token.mint, epoch: pool.nextEpoch.toString(), skipped: `next holder payout due after slot ${due}` };
+  }
 
   // 3. One consistent snapshot: every token account of the mint read at one RPC context slot.
   const snapshot = await k.connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
@@ -182,6 +192,9 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   const cost = payoutCost({ payouts: plan.payouts.length, newAccounts: plan.payouts.filter((p) => p.newAccount).length });
   const summary = { mint: token.mint, epoch: plan.epoch.toString(), snapshotSlot: snapshot.context.slot, holders: holders.length, payouts: plan.payouts.length, chunks: plan.chunks.length, fundedHype: plan.fundedAmount.toString(), carriedHype: [...plan.carryOut.values()].reduce((s, v) => s + v, 0n).toString(), costLamports: cost.total.toString() };
   if (!plan.payouts.length) return { ...summary, skipped: "no holder reached the payout minimum; amounts carry over" };
+  const needed = cost.total + cost.refundableEpochRent + KEEPER_SOL_HEADROOM_LAMPORTS;
+  const balance = BigInt(await k.connection.getBalance(k.authority.publicKey, "confirmed"));
+  if (balance < needed) throw Error(`Keeper holds ${balance} lamports; funding epoch ${plan.epoch} needs ${needed}. Top up the keeper key`);
 
   // 4. Commit the root, then push. The funded epoch is indexed before any payout so every
   //    HolderPaid event matches a stored entitlement. The program requires snapshot_slot < the

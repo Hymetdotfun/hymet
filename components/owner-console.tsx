@@ -14,6 +14,7 @@ type Prepared = {
   transaction?: string;
   lastValidBlockHeight?: number;
   summary?: { config: string; platformWallet: string; snapshotAuthority: string; rentLamports: number; feeLamports: number };
+  rotation?: { current: string; next: string; feeLamports: number };
   error?: string;
 };
 
@@ -24,7 +25,8 @@ async function ownerApi<T>(body: Record<string, string>): Promise<T> {
   return data as T;
 }
 
-/** Phantom-only owner steps: sign the ownership proof (a message, no funds) and sign the one-time initialize. */
+/** Phantom-only owner steps: sign the ownership proof (a message, no funds), sign the one-time initialize, and rotate the
+ *  keeper key if it is lost or compromised. */
 export function OwnerConsole() {
   const { publicKey, signMessage, signTransaction } = useWallet();
   const { connection } = useConnection();
@@ -33,6 +35,7 @@ export function OwnerConsole() {
   const [error, setError] = useState("");
   const [signature, setSignature] = useState("");
   const [busy, setBusy] = useState(false);
+  const [newKeeper, setNewKeeper] = useState("");
   const owner = production.upgradeAuthority;
   const isOwner = publicKey?.toBase58() === owner;
 
@@ -70,6 +73,22 @@ export function OwnerConsole() {
     setNotice("Initialized and verified against config/production.json.");
   });
 
+  // Keeper key rotation (lost or compromised keeper): the owner signs set_snapshot_authority in Phantom.
+  const rotate = () => run(async () => {
+    if (!publicKey || !signTransaction) throw Error("Phantom transaction signing is required");
+    const next = newKeeper.trim();
+    const plan = await ownerApi<Prepared>({ action: "prepare-rotate", wallet: publicKey.toBase58(), newAuthority: next });
+    if (!plan.transaction || plan.lastValidBlockHeight === undefined || !plan.rotation || plan.rotation.next !== next) throw Error("Incomplete rotation review");
+    const tx = Transaction.from(Buffer.from(plan.transaction, "base64"));
+    if (!tx.feePayer?.equals(publicKey)) throw Error("Prepared transaction fee payer is not the owner");
+    setNotice(`Rotate the keeper key ${plan.rotation.current} → ${plan.rotation.next}. Review and approve in Phantom.`);
+    setSignature(await executeWalletOperation(connection, tx, publicKey, signTransaction, window.localStorage, plan.lastValidBlockHeight, undefined, "owner-operation"));
+    const after = await ownerApi<OwnerStatus>({ action: "status" });
+    setStatus(after);
+    if (after.config?.snapshotAuthority !== next) throw Error("Confirmed, but the on-chain keeper key did not change; stop and review");
+    setNotice(`Keeper key is now ${next}. Update config/production.json snapshotAuthority and HYMET_SNAPSHOT_AUTHORITY and install the new key; the app and keeper stay stopped until then.`);
+  });
+
   return (
     <section className="platform-claims panel-card" aria-labelledby="owner-title">
       <div className="platform-claims-heading">
@@ -88,6 +107,12 @@ export function OwnerConsole() {
         {isOwner && <button className="platform-claim-button" type="button" onClick={() => void initialize()} disabled={busy || !signTransaction || !mainnetTransactionsEnabled() || status?.upgradeAuthority !== owner || status.initialized}>2 · Initialize in Phantom</button>}
         {!mainnetTransactionsEnabled() && <span className="platform-claims-gate">Mainnet transactions are disabled in this build; initialize stays off.</span>}
       </div>
+      {isOwner && status?.initialized && (
+        <div className="platform-claims-actions">
+          <input className="owner-rotate-input" type="text" aria-label="New keeper key address" placeholder="New keeper key address" value={newKeeper} onChange={(e) => setNewKeeper(e.target.value)} spellCheck={false} autoComplete="off" />
+          <button className="platform-claim-button" type="button" onClick={() => void rotate()} disabled={busy || !signTransaction || !mainnetTransactionsEnabled() || status.upgradeAuthority !== owner || !newKeeper.trim()}>Rotate keeper key in Phantom</button>
+        </div>
+      )}
       {status && (
         <p className="platform-claims-source">
           Deployed: {status.deployed ? "yes" : "no"} · Upgrade authority: {status.upgradeAuthority ?? "—"} · Reviewed bytes: {status.deployed ? (status.reviewedBytes ?? "match") : "—"} · Initialized: {status.initialized ? "yes" : "no"}. Next: {status.next}

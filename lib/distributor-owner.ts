@@ -4,7 +4,7 @@ import { ComputeBudgetProgram, Connection, PublicKey, Transaction } from "@solan
 import production from "../config/production.json";
 import { expectedGenesis } from "./app-network";
 import { simulateReviewedTransaction } from "./transactions";
-import { decodeProgramData, distributorConfigAddress, initializeDistributorInstruction, programDataAddress, reviewedBytesError } from "./distributor-init.mjs";
+import { decodeProgramData, distributorConfigAddress, initializeDistributorInstruction, programDataAddress, reviewedBytesError, setSnapshotAuthorityInstruction } from "./distributor-init.mjs";
 
 export type OwnerManifest = Pick<typeof production, "distributorProgramId" | "upgradeAuthority" | "platformFeeWallet" | "snapshotAuthority" | "programSha256" | "programBytes">;
 
@@ -79,4 +79,34 @@ export async function prepareOwnerInitialize(c: Connection, wallet: PublicKey, m
     lastValidBlockHeight: latest.lastValidBlockHeight,
     summary: { program: program.toBase58(), config: distributorConfigAddress(program).toBase58(), admin: owner.toBase58(), platformWallet: platform.toBase58(), snapshotAuthority: snapshot.toBase58(), rentLamports: rent, feeLamports: fee },
   };
+}
+
+/** Unsigned `set_snapshot_authority` (keeper key rotation), signed in Phantom by the owner as upgrade authority. Mirrors the
+ *  program's rules so a doomed rotation is refused before Phantom opens: on-curve, and not the current keeper, the fee
+ *  wallet or the owner. Afterwards config/production.json and HYMET_SNAPSHOT_AUTHORITY must be updated; until then the
+ *  app and keeper fail closed. */
+export async function prepareOwnerRotation(c: Connection, wallet: PublicKey, next: PublicKey, manifest: OwnerManifest = production) {
+  const owner = new PublicKey(manifest.upgradeAuthority);
+  if (!wallet.equals(owner)) throw Error("Connected wallet is not the HYMET owner (upgrade authority)");
+  if (!PublicKey.isOnCurve(next.toBytes())) throw Error("The new keeper key must be an on-curve wallet address");
+  const status = await ownerStatus(c, manifest);
+  if (!status.deployed) throw Error("Distributor program is not deployed");
+  if (status.reviewedBytes) throw Error(status.reviewedBytes);
+  if (!status.config) throw Error("Distributor is not initialized yet");
+  if (status.upgradeAuthority !== owner.toBase58()) throw Error(`On-chain upgrade authority is ${status.upgradeAuthority ?? "none"}, not the owner`);
+  const current = status.config.snapshotAuthority;
+  if (next.toBase58() === current) throw Error("The new keeper key is already the snapshot authority");
+  if (next.toBase58() === status.config.platformWallet || next.equals(owner)) throw Error("The keeper key must differ from the fee wallet and the owner");
+  const program = new PublicKey(manifest.distributorProgramId);
+  const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 50_000 }), setSnapshotAuthorityInstruction(program, owner, next));
+  tx.feePayer = owner;
+  const latest = await c.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = latest.blockhash;
+  const [balance, fee] = await Promise.all([
+    c.getBalance(owner, "confirmed"),
+    c.getFeeForMessage(tx.compileMessage(), "confirmed").then((r) => r.value ?? 5_000),
+  ]);
+  if (balance < fee) throw Error(`Owner needs ${fee} lamports for the fee; it holds ${balance}`);
+  await simulateReviewedTransaction(c, tx, false);
+  return { tx, lastValidBlockHeight: latest.lastValidBlockHeight, summary: { program: program.toBase58(), config: distributorConfigAddress(program).toBase58(), current, next: next.toBase58(), feeLamports: fee } };
 }

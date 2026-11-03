@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { assertMainnetTransactionsEnabled, serverRpcUrl } from "../../../lib/app-network";
-import { ownerStatus, prepareOwnerInitialize } from "../../../lib/distributor-owner";
+import { ownerStatus, prepareOwnerInitialize, prepareOwnerRotation } from "../../../lib/distributor-owner";
 import { limitedBody, sameOrigin } from "../../../lib/http";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON request required" }, { status: 415 });
   const noStore = { "Cache-Control": "no-store" };
   try {
-    const body = JSON.parse(new TextDecoder().decode(await limitedBody(request, 2048))) as { action?: unknown; wallet?: unknown };
+    const body = JSON.parse(new TextDecoder().decode(await limitedBody(request, 2048))) as { action?: unknown; wallet?: unknown; newAuthority?: unknown };
     const connection = new Connection(serverRpcUrl(), "confirmed");
     if (body.action === "status") return NextResponse.json(await ownerStatus(connection), { headers: noStore });
     if (body.action === "prepare-initialize") {
@@ -27,6 +27,19 @@ export async function POST(request: NextRequest) {
           transaction: plan.tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
           lastValidBlockHeight: plan.lastValidBlockHeight,
           summary: plan.summary,
+        },
+        { headers: noStore },
+      );
+    }
+    if (body.action === "prepare-rotate") {
+      assertMainnetTransactionsEnabled();
+      if (typeof body.wallet !== "string" || typeof body.newAuthority !== "string") throw Error("Owner wallet and new keeper key are required");
+      const plan = await prepareOwnerRotation(connection, new PublicKey(body.wallet), new PublicKey(body.newAuthority));
+      return NextResponse.json(
+        {
+          transaction: plan.tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+          lastValidBlockHeight: plan.lastValidBlockHeight,
+          rotation: plan.summary,
         },
         { headers: noStore },
       );

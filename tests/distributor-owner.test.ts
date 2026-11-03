@@ -5,7 +5,7 @@ import production from "../config/production.json";
 import { distributorConfigAddress, programDataAddress, reviewedBytesError, setUpgradeAuthorityInstruction, UPGRADEABLE_LOADER } from "../lib/distributor-init.mjs";
 import { ownerProofMessage } from "../lib/owner-proof.mjs";
 import { verifyOwnerProof } from "../lib/owner-proof-verify.mjs";
-import { ownerStatus, prepareOwnerInitialize, type OwnerManifest } from "../lib/distributor-owner";
+import { ownerStatus, prepareOwnerInitialize, prepareOwnerRotation, type OwnerManifest } from "../lib/distributor-owner";
 import { MAINNET_GENESIS } from "../lib/app-network";
 
 const program = new PublicKey(production.distributorProgramId);
@@ -24,11 +24,17 @@ function programData(authority: PublicKey | null, bytes = padded) {
   if (authority) { head[12] = 1; authority.toBuffer().copy(head, 13); }
   return { data: Buffer.concat([head, bytes]), owner: UPGRADEABLE_LOADER, executable: false };
 }
+const keeper = new PublicKey(production.snapshotAuthority), platformWallet = new PublicKey(production.platformFeeWallet);
+function configData() {
+  const d = Buffer.alloc(105);
+  owner.toBuffer().copy(d, 8); platformWallet.toBuffer().copy(d, 40); keeper.toBuffer().copy(d, 72);
+  return d;
+}
 function chain({ authority = owner as PublicKey | null, deployed = true, config = false, balance = 10_000_000, bytes = padded } = {}) {
   const accounts = new Map<string, { data: Buffer; owner: PublicKey; executable: boolean } | null>([
     [program.toBase58(), deployed ? { data: Buffer.alloc(36), owner: UPGRADEABLE_LOADER, executable: true } : null],
     [programDataAddress(program).toBase58(), deployed ? programData(authority, bytes) : null],
-    [distributorConfigAddress(program).toBase58(), config ? { data: Buffer.alloc(105), owner: program, executable: false } : null],
+    [distributorConfigAddress(program).toBase58(), config ? { data: configData(), owner: program, executable: false } : null],
   ]);
   return {
     getGenesisHash: async () => MAINNET_GENESIS,
@@ -109,5 +115,31 @@ describe("Phantom owner initialize", () => {
     await expect(prepareOwnerInitialize(chain(), deployKey, manifest)).rejects.toThrow("not the HYMET owner");
     await expect(prepareOwnerInitialize(chain({ balance: 1_000 }), owner, manifest)).rejects.toThrow("Owner needs");
     await expect(prepareOwnerInitialize(chain({ deployed: false }), owner, manifest)).rejects.toThrow("not deployed");
+  });
+});
+
+describe("Phantom keeper key rotation", () => {
+  const next = Keypair.generate().publicKey;
+  it("builds set_snapshot_authority the owner alone signs and pays", async () => {
+    const { tx, summary } = await prepareOwnerRotation(chain({ config: true }), owner, next, manifest);
+    expect(tx.compileMessage().header.numRequiredSignatures).toBe(1);
+    expect(tx.feePayer?.equals(owner)).toBe(true);
+    const ix = tx.instructions[1];
+    expect(ix.programId.equals(program)).toBe(true);
+    expect(ix.data.subarray(0, 8)).toEqual(createHash("sha256").update("global:set_snapshot_authority").digest().subarray(0, 8));
+    expect(new PublicKey(ix.data.subarray(8)).equals(next)).toBe(true);
+    expect(ix.keys[0].pubkey.equals(owner) && ix.keys[0].isSigner).toBe(true);
+    expect(summary).toMatchObject({ current: keeper.toBase58(), next: next.toBase58() });
+  });
+
+  it("refuses rotations the program would reject, and any wallet but the owner", async () => {
+    const live = chain({ config: true });
+    await expect(prepareOwnerRotation(live, deployKey, next, manifest)).rejects.toThrow("not the HYMET owner");
+    await expect(prepareOwnerRotation(live, owner, keeper, manifest)).rejects.toThrow("already the snapshot authority");
+    await expect(prepareOwnerRotation(live, owner, platformWallet, manifest)).rejects.toThrow("fee wallet");
+    await expect(prepareOwnerRotation(live, owner, owner, manifest)).rejects.toThrow("fee wallet");
+    await expect(prepareOwnerRotation(live, owner, PublicKey.findProgramAddressSync([Buffer.from("x")], program)[0], manifest)).rejects.toThrow("on-curve");
+    await expect(prepareOwnerRotation(chain(), owner, next, manifest)).rejects.toThrow("not initialized");
+    await expect(prepareOwnerRotation(chain({ config: true, authority: deployKey }), owner, next, manifest)).rejects.toThrow("not the owner");
   });
 });

@@ -9,13 +9,14 @@ const program = new PublicKey("9X9fnj4Uh9WC9nmxCahTVsixHZ6VGxNpMesuGhK239Px");
 const mint = Keypair.generate().publicKey;
 const owner = (i: number) => Keypair.fromSeed(createHash("sha256").update(`keeper holder ${i}`).digest()).publicKey;
 
-function feePool(opts: { creatorBps: number; unallocated: bigint; nextEpoch: bigint }) {
+function feePool(opts: { creatorBps: number; unallocated: bigint; nextEpoch: bigint; lastSnapshotSlot?: bigint }) {
   const d = Buffer.alloc(195);
   createHash("sha256").update("account:FeePool").digest().copy(d, 0, 0, 8);
   mint.toBuffer().copy(d, 40);
   d.writeUInt16LE(opts.creatorBps, 136);
   d.writeBigUInt64LE(opts.unallocated, 146);
   d.writeBigUInt64LE(opts.nextEpoch, 162);
+  d.writeBigUInt64LE(opts.lastSnapshotSlot ?? 0n, 187);
   return d;
 }
 function tokenAccount(holder: PublicKey, amount: bigint) {
@@ -27,7 +28,7 @@ function tokenAccount(holder: PublicKey, amount: bigint) {
   return d;
 }
 
-function harness(pool: Buffer, extra: Map<string, Buffer> = new Map(), storedRows: Record<string, unknown>[] = []) {
+function harness(pool: Buffer, extra: Map<string, Buffer> = new Map(), storedRows: Record<string, unknown>[] = [], keeperLamports = 1_000_000_000) {
   const a = distributorAddresses(program, mint);
   const accounts = new Map<string, Buffer>([[a.feePool.toBase58(), pool], ...extra]);
   const sent: string[] = [], simulated: string[] = [], sql: string[] = [];
@@ -44,6 +45,7 @@ function harness(pool: Buffer, extra: Map<string, Buffer> = new Map(), storedRow
     getMultipleAccountsInfo: async (keys: PublicKey[]) => keys.map(() => ({ owner: TOKEN_PROGRAM_ID, data: Buffer.alloc(165) })),
     // The first read is still the snapshot slot, so the keeper must wait before committing the root.
     getSlot: async () => (slotReads++ ? 4243 : 4242),
+    getBalance: async () => keeperLamports,
   } as unknown as Connection;
   const k: KeeperContext = {
     connection, program, platform: Keypair.generate().publicKey, authority: Keypair.generate(), dryRun: false,
@@ -98,5 +100,23 @@ describe("holder payout keeper", () => {
     const result = await runHolderPayouts(k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() });
     expect(sent.slice(0, 3)).toEqual(["pay chunk 0", "close epoch 0", "reindex"]);
     expect(result).toMatchObject({ epoch: "1", skipped: expect.stringMatching(/below the payout minimum/) });
+  });
+
+  it("pays at most once per payout interval while settlement keeps running every tick", async () => {
+    const pool = feePool({ creatorBps: 5_000, unallocated: 36_000_000_000n, nextEpoch: 1n, lastSnapshotSlot: 4_000n });
+    const early = harness(pool);
+    early.k.payoutIntervalSlots = 216_000n; // 24 h; the last snapshot was 242 slots ago
+    expect(await runHolderPayouts(early.k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() })).toMatchObject({ skipped: "next holder payout due after slot 220000" });
+    expect(early.sent).toEqual([]);
+    const due = harness(pool);
+    due.k.payoutIntervalSlots = 200n;
+    expect(await runHolderPayouts(due.k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() })).toMatchObject({ payouts: 8, closed: true });
+  });
+
+  it("never funds an epoch the keeper cannot afford to pay out and close", async () => {
+    const { k, sent, sql } = harness(feePool({ creatorBps: 5_000, unallocated: 36_000_000_000n, nextEpoch: 0n }), new Map(), [], 1_000_000);
+    await expect(runHolderPayouts(k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() })).rejects.toThrow(/Top up the keeper key/);
+    expect(sent).toEqual([]);
+    expect(sql.filter((q) => q.startsWith("INSERT"))).toEqual([]);
   });
 });
