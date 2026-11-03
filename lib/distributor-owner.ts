@@ -6,6 +6,16 @@ import { expectedGenesis } from "./app-network";
 import { simulateReviewedTransaction } from "./transactions";
 import { decodeProgramData, distributorConfigAddress, initializeDistributorInstruction, programDataAddress, reviewedBytesError, setSnapshotAuthorityInstruction } from "./distributor-init.mjs";
 
+/** Phantom inserts its own priority-fee instruction into a transaction that sets no compute-unit price, which changes the
+ *  reviewed message (and the console then refuses to send it). An explicit price keeps the message exactly as reviewed;
+ *  20,000 micro-lamports × 50,000 units adds at most 1,000 lamports. */
+export const OWNER_COMPUTE_UNITS = 50_000;
+export const OWNER_PRIORITY_MICROLAMPORTS = 20_000;
+const ownerBudget = () => [
+  ComputeBudgetProgram.setComputeUnitLimit({ units: OWNER_COMPUTE_UNITS }),
+  ComputeBudgetProgram.setComputeUnitPrice({ microLamports: OWNER_PRIORITY_MICROLAMPORTS }),
+];
+
 export type OwnerManifest = Pick<typeof production, "distributorProgramId" | "upgradeAuthority" | "platformFeeWallet" | "snapshotAuthority" | "programSha256" | "programBytes">;
 
 export type OwnerStatus = {
@@ -60,10 +70,7 @@ export async function prepareOwnerInitialize(c: Connection, wallet: PublicKey, m
   if (status.upgradeAuthority !== owner.toBase58()) throw Error(`On-chain upgrade authority is ${status.upgradeAuthority ?? "none"}, not the owner; hand it over first`);
   const program = new PublicKey(manifest.distributorProgramId);
   const platform = new PublicKey(manifest.platformFeeWallet), snapshot = new PublicKey(manifest.snapshotAuthority);
-  const tx = new Transaction().add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 50_000 }),
-    initializeDistributorInstruction(program, owner, platform, snapshot),
-  );
+  const tx = new Transaction().add(...ownerBudget(), initializeDistributorInstruction(program, owner, platform, snapshot));
   tx.feePayer = owner;
   const latest = await c.getLatestBlockhash("confirmed");
   tx.recentBlockhash = latest.blockhash;
@@ -98,7 +105,7 @@ export async function prepareOwnerRotation(c: Connection, wallet: PublicKey, nex
   if (next.toBase58() === current) throw Error("The new keeper key is already the snapshot authority");
   if (next.toBase58() === status.config.platformWallet || next.equals(owner)) throw Error("The keeper key must differ from the fee wallet and the owner");
   const program = new PublicKey(manifest.distributorProgramId);
-  const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 50_000 }), setSnapshotAuthorityInstruction(program, owner, next));
+  const tx = new Transaction().add(...ownerBudget(), setSnapshotAuthorityInstruction(program, owner, next));
   tx.feePayer = owner;
   const latest = await c.getLatestBlockhash("confirmed");
   tx.recentBlockhash = latest.blockhash;

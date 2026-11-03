@@ -1,9 +1,23 @@
 import { Buffer } from 'buffer';
 import bs58 from 'bs58';
-import { Connection, PublicKey, Transaction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, Message, PublicKey, Transaction } from '@solana/web3.js';
 import { awaitSignature, simulateReviewedTransaction } from './transactions';
 import { expectedGenesis, assertMainnetTransactionsEnabled } from './app-network';
 type Store=Pick<Storage,'getItem'|'setItem'>;
+/** Human-readable summary of how a wallet altered a reviewed message (diagnostics only; the byte comparison decides). */
+export function messageChanges(reviewed:Buffer,signed:Transaction) {
+  // From the saved bytes: a wallet may mutate the reviewed Transaction object in place.
+  const a=Message.from(reviewed), b=signed.compileMessage();
+  const budget=(m:typeof a)=>m.instructions.filter(ix=>m.accountKeys[ix.programIdIndex].equals(ComputeBudgetProgram.programId)).map(ix=>ix.data).join(',');
+  const programs=(m:typeof a)=>m.instructions.filter(ix=>!m.accountKeys[ix.programIdIndex].equals(ComputeBudgetProgram.programId)).map(ix=>m.accountKeys[ix.programIdIndex].toBase58()).join(',');
+  const found=[
+    a.recentBlockhash!==b.recentBlockhash?'blockhash':'',
+    !a.accountKeys[0].equals(b.accountKeys[0])?'fee payer':'',
+    budget(a)!==budget(b)?'compute budget / priority fee':'',
+    programs(a)!==programs(b)?'instructions added or removed':'',
+  ].filter(Boolean);
+  return found.join(', ')||'accounts or instruction data';
+}
 // outcome distinguishes an on-chain failure from an expired (never landed) transaction; phase values are unchanged for existing readers.
 type RecordState={phase:'awaiting-signature'|'signed'|'confirmed'|'failed';signature?:string;lastValidBlockHeight:number;outcome?:'failed'|'expired'};
 /** Public transaction journal only. Never stores keys or retries ambiguous broadcasts. */
@@ -36,7 +50,7 @@ export async function executeWalletOperation(c:Connection,tx:Transaction,wallet:
     // its on-chain status and waits for blockhash expiry instead of risking a second, overlapping operation.
     const altered=signed.signature?bs58.encode(signed.signature):undefined;
     storage.setItem(key,JSON.stringify(altered?{...record,phase:'signed',signature:altered}:{...record,phase:'failed'}));
-    throw Error(`Phantom changed the reviewed transaction message; nothing was sent${altered?` · its signature ${altered} is checked on-chain before any retry`:''}`);
+    throw Error(`Phantom changed the reviewed transaction message (${messageChanges(message,signed)}); nothing was sent${altered?` · its signature ${altered} is checked on-chain before any retry`:''}`);
   }
   for(const signer of temporary) {
     const current=signed.signatures.find(s=>s.publicKey.equals(signer.publicKey));

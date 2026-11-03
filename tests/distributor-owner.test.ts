@@ -1,11 +1,11 @@
 import { createHash, createPrivateKey, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, Keypair, PublicKey, type Transaction } from "@solana/web3.js";
 import production from "../config/production.json";
 import { distributorConfigAddress, programDataAddress, reviewedBytesError, setUpgradeAuthorityInstruction, UPGRADEABLE_LOADER } from "../lib/distributor-init.mjs";
 import { ownerProofMessage } from "../lib/owner-proof.mjs";
 import { verifyOwnerProof } from "../lib/owner-proof-verify.mjs";
-import { ownerStatus, prepareOwnerInitialize, prepareOwnerRotation, type OwnerManifest } from "../lib/distributor-owner";
+import { OWNER_PRIORITY_MICROLAMPORTS, ownerStatus, prepareOwnerInitialize, prepareOwnerRotation, type OwnerManifest } from "../lib/distributor-owner";
 import { MAINNET_GENESIS } from "../lib/app-network";
 
 const program = new PublicKey(production.distributorProgramId);
@@ -102,7 +102,7 @@ describe("Phantom owner initialize", () => {
     expect(message.header.numRequiredSignatures).toBe(1);
     expect(message.accountKeys[0].equals(owner)).toBe(true);
     expect(tx.feePayer?.equals(owner)).toBe(true);
-    const init = tx.instructions[1];
+    const init = tx.instructions.find((ix) => ix.programId.equals(program))!;
     expect(init.programId.equals(program)).toBe(true);
     expect(init.keys[0]).toMatchObject({ isSigner: true, isWritable: true });
     expect(init.keys[0].pubkey.equals(owner)).toBe(true);
@@ -124,7 +124,7 @@ describe("Phantom keeper key rotation", () => {
     const { tx, summary } = await prepareOwnerRotation(chain({ config: true }), owner, next, manifest);
     expect(tx.compileMessage().header.numRequiredSignatures).toBe(1);
     expect(tx.feePayer?.equals(owner)).toBe(true);
-    const ix = tx.instructions[1];
+    const ix = tx.instructions.find((i) => i.programId.equals(program))!;
     expect(ix.programId.equals(program)).toBe(true);
     expect(ix.data.subarray(0, 8)).toEqual(createHash("sha256").update("global:set_snapshot_authority").digest().subarray(0, 8));
     expect(new PublicKey(ix.data.subarray(8)).equals(next)).toBe(true);
@@ -141,5 +141,33 @@ describe("Phantom keeper key rotation", () => {
     await expect(prepareOwnerRotation(live, owner, PublicKey.findProgramAddressSync([Buffer.from("x")], program)[0], manifest)).rejects.toThrow("on-curve");
     await expect(prepareOwnerRotation(chain(), owner, next, manifest)).rejects.toThrow("not initialized");
     await expect(prepareOwnerRotation(chain({ config: true, authority: deployKey }), owner, next, manifest)).rejects.toThrow("not the owner");
+  });
+});
+
+// Phantom adds its own compute-unit price when a transaction sets none, which changes the reviewed message.
+const phantomLike = (tx: Transaction) => {
+  const priced = tx.instructions.some((ix) => ix.programId.equals(ComputeBudgetProgram.programId) && ix.data[0] === 3);
+  if (!priced) tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }));
+  return tx;
+};
+describe("owner transactions survive Phantom unchanged", () => {
+  it.each(["initialize", "rotate"] as const)("%s sets an explicit compute-unit price, so the reviewed message is what Phantom signs", async (kind) => {
+    const { tx } = kind === "initialize"
+      ? await prepareOwnerInitialize(chain(), owner, manifest)
+      : await prepareOwnerRotation(chain({ config: true }), owner, Keypair.generate().publicKey, manifest);
+    const price = tx.instructions.find((ix) => ix.programId.equals(ComputeBudgetProgram.programId) && ix.data[0] === 3);
+    expect(price?.data.readBigUInt64LE(1)).toBe(BigInt(OWNER_PRIORITY_MICROLAMPORTS));
+    const reviewed = Buffer.from(tx.serializeMessage());
+    expect(Buffer.from(phantomLike(tx).serializeMessage()).equals(reviewed)).toBe(true);
+  });
+
+  it("keeps the initialize instruction and its accounts exactly as approved", async () => {
+    const { tx, summary } = await prepareOwnerInitialize(chain(), owner, manifest);
+    const init = tx.instructions.filter((ix) => ix.programId.equals(program));
+    expect(init).toHaveLength(1);
+    expect(init[0].keys.map((k) => k.pubkey.toBase58())).toEqual([owner.toBase58(), production.platformFeeWallet, distributorConfigAddress(program).toBase58(), program.toBase58(), programDataAddress(program).toBase58(), "11111111111111111111111111111111"]);
+    expect(new PublicKey(init[0].data.subarray(8)).toBase58()).toBe(production.snapshotAuthority);
+    expect(tx.compileMessage().header.numRequiredSignatures).toBe(1);
+    expect(summary).toMatchObject({ platformWallet: production.platformFeeWallet, snapshotAuthority: production.snapshotAuthority, admin: owner.toBase58() });
   });
 });
