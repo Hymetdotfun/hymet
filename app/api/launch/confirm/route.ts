@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (client) await client.query("ROLLBACK").catch(() => {});
     const code = (error as { code?: string })?.code;
-    if (code === "23505") return json("Name, ticker, mint, or launch signature is already registered", 409);
+    if (code === "23505") return json("This mint or launch signature is already registered", 409);
     return json(error instanceof Error ? error.message : "Confirmed launch registration failed", 503);
   } finally {
     client?.release();

@@ -203,7 +203,7 @@ export function TokenFeed({ compact = false, emptyVariant = "default" }: { compa
                 <div className="token-card-content">
                   <div className="token-card-title">
                     <strong>{token.name}</strong>
-                    <span>{token.ticker} / HYPE</span>
+                    <span>{token.ticker} / HYPE · {token.mint.slice(0, 4)}…{token.mint.slice(-4)}</span>
                   </div>
                   <div className="token-card-metrics">
                     <div>

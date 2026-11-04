@@ -32,7 +32,8 @@ import {
   type RecoveryResult,
 } from "../lib/recovery";
 import { defaults, validate, friendly, type Inputs } from "../lib/config";
-import { assertPersistedAllocation, creatorShareAllowed, launchConfirmationPayload, parseLaunchAllocationPolicy, type LaunchAllocationPolicy } from "../lib/launch-allocation-ui";
+import { assertPersistedAllocation, creatorShareAllowed, holderSplitsAvailable, launchConfirmationPayload, parseLaunchAllocationPolicy, type LaunchAllocationPolicy } from "../lib/launch-allocation-ui";
+import { launchAuthorizationMessage } from "../lib/launch-authorization";
 import { confirmedLaunchDestination } from "../lib/confirmed-launch-route";
 // Holder allocations need the verified distributor and payout keeper; both flags are inlined at build time.
 const HOLDER_REWARDS_PROGRAM =
@@ -111,7 +112,8 @@ function Launcher() {
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/fees", { cache: "no-store", signal: controller.signal })
+    // A busy RPC can fail one check, so a failed check is retried before the slider stays locked.
+    const check = (attempt: number): Promise<boolean> => fetch("/api/fees", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) return false;
         const readiness = (await response.json()) as {
@@ -129,6 +131,13 @@ function Launcher() {
           readiness.holderRewards?.automatic === true
         );
       })
+      .catch(() => false)
+      .then(async (ready) => {
+        if (ready || attempt >= 3 || controller.signal.aborted) return ready;
+        await new Promise((resolve) => setTimeout(resolve, 4_000));
+        return check(attempt + 1);
+      });
+    check(1)
       .then((ready) => {
         if (!controller.signal.aborted) setHolderPayoutsReady(ready);
       })
@@ -196,7 +205,7 @@ function Launcher() {
     lock.current = true;
     setBusy(true);
     setError("");
-    let metadataComplete = false;
+    let metadataComplete = false, metadataStarted = false;
     let preparationStage = "validation";
     try {
       if (allocationPolicyState.status !== "ready" || !allocationPolicyState.policy)
@@ -214,40 +223,37 @@ function Launcher() {
       const creatorShare = Number(v.creatorShare);
       if (!creatorShareAllowed(v.creatorShare, allocationPolicyState.policy))
         throw Error(HOLDER_ALLOCATION_UNAVAILABLE);
-      if (creatorShare !== 100 && (
-        !allocationPolicyState.policy.holderAllocationsEnabled ||
-        !HOLDER_REWARDS_PROGRAM ||
-        !holderPayoutsReady ||
-        !mainnetTransactionsEnabled()
-      )) throw Error(HOLDER_ALLOCATION_UNAVAILABLE);
+      if (!mainnetTransactionsEnabled()) throw Error("Launches are not open yet");
+      if (creatorShare !== 100 && !holderSplitsAvailable(HOLDER_REWARDS_PROGRAM, holderPayoutsReady, allocationPolicyState.policy))
+        throw Error(HOLDER_ALLOCATION_UNAVAILABLE);
       if (!image) throw Error(imageIssue || "Choose a token logo");
       if (
         image.size > 1024 * 1024 ||
         !["image/png", "image/jpeg", "image/gif"].includes(image.type)
       )
         throw Error("Choose PNG, JPEG or GIF up to 1 MB");
-      preparationStage = "HYMET name and ticker reservation";
-      setState("Reserving HYMET name and ticker");
+      preparationStage = "Phantom launch approval";
+      setState("Waiting for launch approval in Phantom");
       const issuedAt = new Date().toISOString();
       const nonce = crypto.randomUUID();
-      const reservationMessage = `HYMET launch reservation\nOrigin: ${location.origin}\nWallet: ${wallet.publicKey.toBase58()}\nName: ${v.name.trim().normalize("NFKC").replace(/\s+/gu, " ")}\nTicker: ${v.symbol.normalize("NFKC").trim().toUpperCase()}\nNonce: ${nonce}\nIssuedAt: ${issuedAt}`;
-      const reservationSignature = await wallet.signMessage(new TextEncoder().encode(reservationMessage));
-      const reservationResponse = await fetch("/api/launch/reserve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: v.name, ticker: v.symbol, wallet: wallet.publicKey.toBase58(), issuedAt, nonce, signature: Buffer.from(reservationSignature).toString("base64") }) });
+      const authorization = launchAuthorizationMessage({ origin: location.origin, wallet: wallet.publicKey.toBase58(), name: v.name, ticker: v.symbol, nonce, issuedAt });
+      const authorizationSignature = Buffer.from(await wallet.signMessage(new TextEncoder().encode(authorization))).toString("base64");
+      preparationStage = "HYMET launch record";
+      setState("Recording launch request");
+      const reservationResponse = await fetch("/api/launch/reserve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: v.name, ticker: v.symbol, wallet: wallet.publicKey.toBase58(), issuedAt, nonce, signature: authorizationSignature }) });
       const reservationBody = await reservationResponse.json();
-      if (!reservationResponse.ok) throw Error(reservationBody.error || "HYMET name/ticker reservation failed");
-      preparationStage = "Phantom metadata message authorization";
+      if (!reservationResponse.ok) throw Error(reservationBody.error || "HYMET launch request failed");
       setState("Uploading metadata");
-      const timestamp = Date.now().toString();
-      const msg = `Authorize token metadata upload\nOrigin: ${location.origin}\nWallet: ${wallet.publicKey.toBase58()}\nTimestamp: ${timestamp}`;
-      const sig = await wallet.signMessage(new TextEncoder().encode(msg));
       const form = new FormData();
       form.set("image", image);
       form.set("details", JSON.stringify(v));
       form.set("wallet", wallet.publicKey.toBase58());
-      form.set("timestamp", timestamp);
-      form.set("signature", Buffer.from(sig).toString("base64"));
+      form.set("issuedAt", issuedAt);
+      form.set("nonce", nonce);
+      form.set("signature", authorizationSignature);
       preparationStage =
         "metadata service upload / public gateway verification";
+      metadataStarted = true;
       const data = await uploadAuthorizedMetadata(form);
       metadataComplete = true;
       preparationStage = "transaction construction / RPC estimates";
@@ -276,7 +282,7 @@ function Launcher() {
     } catch (e) {
       setState("Preparation failed before transaction signing");
       setError(
-        `${preparationStage === "transaction construction / RPC estimates" ? friendly(e) : metadataPreparationError(e, preparationStage === "Phantom metadata message authorization")} Stage: ${preparationStage}. ${metadataComplete ? "Metadata upload completed." : "Public metadata verification is incomplete."} Prepare does not sign or broadcast launch transactions; metadata authorization is a separate message approval.`,
+        `${preparationStage === "transaction construction / RPC estimates" ? friendly(e) : metadataPreparationError(e, preparationStage === "Phantom launch approval")} Stage: ${preparationStage}. ${metadataComplete ? "Metadata upload completed." : metadataStarted ? "Public metadata verification is incomplete." : "Nothing was uploaded."} No transaction was signed or sent.`,
       );
     } finally {
       lock.current = false;
@@ -432,11 +438,8 @@ function Launcher() {
   const allocationSelectionAllowed = Boolean(
     allocationPolicy && creatorShareAllowed(v.creatorShare, allocationPolicy),
   );
-  const holderSplitsEnabled =
-    Boolean(HOLDER_REWARDS_PROGRAM) &&
-    holderPayoutsReady &&
-    mainnetTransactionsEnabled() &&
-    allocationPolicy?.holderAllocationsEnabled === true;
+  // The slider follows the verified distributor; whether launches are open is checked when the launch is submitted.
+  const holderSplitsEnabled = holderSplitsAvailable(HOLDER_REWARDS_PROGRAM, holderPayoutsReady, allocationPolicy);
   const field = (
     key: keyof Inputs,
     label: string,
@@ -715,7 +718,7 @@ function Launcher() {
                     <small className="allocation-note">
                       {holderSplitsEnabled
                         ? `HYMET's fixed 20% platform share stays unchanged. This slider splits the remaining 80%.${mainnetPayoutVerified ? "" : " Holder payouts are configured; no Mainnet payout has been verified yet."}`
-                        : `HYMET's fixed 20% platform share stays unchanged. Holder splits aren't available right now: launches are closed, or the distributor check couldn't finish. Refresh to try again. Current allocation: ${creatorShareNumber ?? "—"}% creator / ${holderShareNumber ?? "—"}% holders.`}
+                        : `HYMET's fixed 20% platform share stays unchanged. Holder splits are unavailable because the distributor check couldn't finish. Refresh to try again. Current allocation: ${creatorShareNumber ?? "—"}% creator / ${holderShareNumber ?? "—"}% holders.`}
                     </small>
                   </div>
                 </div>

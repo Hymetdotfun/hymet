@@ -12,6 +12,7 @@ import {
 } from "../../../lib/metadata-service";
 import { mainnetTransactionsEnabled, testNetworkRequested } from "../../../lib/app-network";
 import { saveTestFile } from "../../../lib/test-network-files";
+import { launchAuthorizationFresh, launchAuthorizationMessage } from "../../../lib/launch-authorization";
 export const runtime = "nodejs";
 const used = new Map<string, number>();
 async function pin(
@@ -84,10 +85,10 @@ export async function POST(req: NextRequest) {
     validateArtwork(bytes, image.type);
     operation = "wallet message authorization";
     const wallet = new PublicKey(String(f.get("wallet")));
-    const time = String(f.get("timestamp"));
-    if (!/^\d{13}$/.test(time) || Math.abs(Date.now() - Number(time)) > 300000)
+    const issuedAt = String(f.get("issuedAt")), nonce = String(f.get("nonce"));
+    if (!launchAuthorizationFresh(issuedAt, nonce))
       throw new MetadataOperationError(operation, "authorization expired", 403);
-    const message = `Authorize token metadata upload\nOrigin: ${req.headers.get("origin")}\nWallet: ${wallet.toBase58()}\nTimestamp: ${time}`;
+    const message = launchAuthorizationMessage({ origin: String(req.headers.get("origin")), wallet: wallet.toBase58(), name: v.name, ticker: v.symbol, nonce, issuedAt });
     const key = createPublicKey({
       key: Buffer.concat([
         Buffer.from("302a300506032b6570032100", "hex"),

@@ -4,6 +4,7 @@ import { createPrivateKey, sign } from "node:crypto";
 import { Keypair, SystemProgram, Connection } from "@solana/web3.js";
 import { MintLayout, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { HYPE_MINT } from "../lib/quote-assets";
+import { launchAuthorizationMessage } from "../lib/launch-authorization";
 import {
   DynamicBondingCurveClient,
   DYNAMIC_BONDING_CURVE_PROGRAM_ID,
@@ -62,8 +63,9 @@ it.each([
     vi.stubEnv("PINATA_JWT", "unit-test-placeholder");
     vi.stubEnv("IPFS_GATEWAY", "https://example.com");
     const wallet = Keypair.generate(),
-      timestamp = Date.now().toString();
-    const message = `Authorize token metadata upload\nOrigin: http://localhost\nWallet: ${wallet.publicKey.toBase58()}\nTimestamp: ${timestamp}`;
+      issuedAt = new Date().toISOString(),
+      nonce = "00000000-0000-4000-8000-000000000000";
+    const message = launchAuthorizationMessage({ origin: "http://localhost", wallet: wallet.publicKey.toBase58(), name: "Trajectory", ticker: "TRJ", nonce, issuedAt });
     const key = createPrivateKey({
       key: Buffer.concat([
         Buffer.from("302e020100300506032b657004220420", "hex"),
@@ -90,7 +92,8 @@ it.each([
       "logo.png",
     );
     form.set("wallet", wallet.publicKey.toBase58());
-    form.set("timestamp", timestamp);
+    form.set("issuedAt", issuedAt);
+    form.set("nonce", nonce);
     form.set(
       "signature",
       sign(null, Buffer.from(message), key).toString("base64"),

@@ -5,7 +5,7 @@ export function metadataPreparationError(
   const message =
     error instanceof Error ? error.message : "Metadata preparation failed";
   if (authorization && /reject|4001/i.test(message))
-    return "Metadata message approval rejected. No upload or automatic retry was requested.";
+    return "Launch approval rejected in Phantom. Nothing was uploaded and no automatic retry was requested.";
   return message;
 }
 export async function uploadAuthorizedMetadata(

@@ -10,6 +10,7 @@ import {
   metadataPreparationError,
 } from "../lib/metadata-preparation";
 import { png500 } from "./fixtures/png-500";
+import { launchAuthorizationMessage } from "../lib/launch-authorization";
 // These tests model open launches; the closed state is covered separately.
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_ENABLE_MAINNET", "true");
@@ -23,8 +24,9 @@ afterEach(() => {
 function request(mode = "valid", wallet = Keypair.generate()) {
   vi.stubEnv("PINATA_JWT", "synthetic-credential-never-log");
   vi.stubEnv("IPFS_GATEWAY", "https://example.com");
-  const timestamp = String(Date.now() - (mode === "expired" ? 400000 : 0));
-  const message = `Authorize token metadata upload\nOrigin: http://localhost\nWallet: ${wallet.publicKey.toBase58()}\nTimestamp: ${timestamp}`;
+  const issuedAt = new Date(Date.now() - (mode === "expired" ? 400000 : 0)).toISOString();
+  const nonce = "00000000-0000-4000-8000-000000000000";
+  const message = launchAuthorizationMessage({ origin: "http://localhost", wallet: wallet.publicKey.toBase58(), name: "Test", ticker: "TEST", nonce, issuedAt });
   const key = createPrivateKey({
     key: Buffer.concat([
       Buffer.from("302e020100300506032b657004220420", "hex"),
@@ -46,7 +48,8 @@ function request(mode = "valid", wallet = Keypair.generate()) {
     "logo.png",
   );
   f.set("wallet", wallet.publicKey.toBase58());
-  f.set("timestamp", timestamp);
+  f.set("issuedAt", issuedAt);
+  f.set("nonce", nonce);
   f.set(
     "signature",
     mode === "invalid"
@@ -249,7 +252,7 @@ it("browser preserves known metadata URI and HTTP status without calling it RPC 
   ).toContain("HTTP 429");
   expect(
     metadataPreparationError(Error("User rejected (4001)"), true),
-  ).toContain("message approval rejected");
+  ).toContain("Launch approval rejected");
 });
 it("non-JSON server errors preserve HTTP status and uncertain completion", async () => {
   const fetcher = vi
@@ -277,4 +280,14 @@ it("preserves timeout classification when upload response headers arrived but it
   expect(data.uploads.image).toBe("unknown");
   expect(data.error).toContain("timeout reading response");
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("refuses an upload whose name differs from the one the wallet approved", async () => {
+  const wallet = Keypair.generate();
+  const req = request("valid", wallet);
+  const form = await req.formData();
+  form.set("details", JSON.stringify({ ...defaults, name: "Swapped", symbol: "TEST" }));
+  const response = await POST(new NextRequest("http://localhost/api/metadata", { method: "POST", headers: { origin: "http://localhost" }, body: form }));
+  expect(response.status).toBe(403);
+  expect((await response.json()).error).toMatch(/invalid wallet signature/);
 });

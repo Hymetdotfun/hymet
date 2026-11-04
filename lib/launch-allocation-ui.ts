@@ -46,6 +46,11 @@ export function parseLaunchAllocationPolicy(input: unknown): LaunchAllocationPol
   return value as LaunchAllocationPolicy;
 }
 
+/** Whether holders can be given a share: the program is built in, the distributor checked out, and the server allows splits. */
+export function holderSplitsAvailable(program: string, distributorVerified: boolean, policy: LaunchAllocationPolicy | undefined) {
+  return Boolean(program) && distributorVerified && policy?.holderAllocationsEnabled === true;
+}
+
 export function creatorShareAllowed(value: string, policy: LaunchAllocationPolicy): boolean {
   try {
     const creator = parseCreatorShare(value);
