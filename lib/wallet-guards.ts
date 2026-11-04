@@ -1,8 +1,14 @@
+import bs58 from "bs58";
 import { Message, PublicKey } from "@solana/web3.js";
 
 /** Lighthouse assertion program, which Phantom may add to a transaction it signs. Immutable on Mainnet (no upgrade authority). */
 export const LIGHTHOUSE_PROGRAM_ID = new PublicKey("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95");
 export const MAX_WALLET_GUARDS = 16;
+/** Lighthouse instruction tags that only read accounts and fail or pass: AssertAccountData through AssertSysvarClock. Memory
+ *  write and close (0, 1) can spend the signer's SOL, and the rest (16, 17) have no use here, so both are refused. */
+const ASSERTION_TAGS = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+/** AssertAccountInfo and AssertAccountInfoMulti: the only assertions allowed to name the wallet, e.g. its SOL balance. */
+const WALLET_ASSERTION_TAGS = new Set([5, 6]);
 
 export type WalletMessageCheck =
   | { ok: true; guards: number }
@@ -38,7 +44,8 @@ const sameInstruction = (a: Instruction, b: Instruction) =>
  * Decides whether a wallet-returned message is the reviewed one. Byte-identical messages pass. Otherwise the only accepted
  * change is added Lighthouse assertion instructions: every reviewed instruction must remain, in order, with the same program,
  * accounts, signer and writable permissions and data, which covers compute-budget settings; the fee payer, blockhash and
- * signers must match; and a guard may not touch a signer or make any account writable. Anything else is refused.
+ * signers must match; a guard must be a read-only assertion and may not make any account writable; and it may name a signer
+ * only as the single target of an account-info assertion on the fee payer. Anything else is refused.
  * Permissions are compared by account, because adding accounts renumbers the message's account table.
  */
 export function verifyWalletMessage(reviewedBytes: Uint8Array, signedBytes: Uint8Array): WalletMessageCheck {
@@ -54,6 +61,7 @@ export function verifyWalletMessage(reviewedBytes: Uint8Array, signedBytes: Uint
   if (!reviewed.accountKeys[0].equals(signed.accountKeys[0])) return { ok: false, reason: "fee payer changed" };
   if (reviewed.header.numRequiredSignatures !== signed.header.numRequiredSignatures) return { ok: false, reason: "signers changed" };
 
+  const feePayer = reviewed.accountKeys[0].toBase58();
   const before = expand(reviewed), after = expand(signed);
   const lighthouse = LIGHTHOUSE_PROGRAM_ID.toBase58();
   if (before.flags.has(lighthouse)) return { ok: false, reason: "reviewed message already uses the guard program" };
@@ -79,8 +87,11 @@ export function verifyWalletMessage(reviewedBytes: Uint8Array, signedBytes: Uint
   if (added.length > MAX_WALLET_GUARDS) return { ok: false, reason: `too many guard instructions: ${added.length}` };
   for (const guard of added) {
     if (guard.program.signer || guard.program.writable) return { ok: false, reason: "guard program has elevated permissions" };
+    const tag = bs58.decode(guard.data)[0];
+    if (!ASSERTION_TAGS.has(tag)) return { ok: false, reason: `guard instruction is not an assertion: tag ${tag ?? "none"}` };
     const signer = guard.accounts.find((meta) => meta.signer);
-    if (signer) return { ok: false, reason: `guard instruction uses signer ${signer.key}` };
+    if (signer && !(signer.key === feePayer && guard.accounts.length === 1 && WALLET_ASSERTION_TAGS.has(tag)))
+      return { ok: false, reason: `guard instruction uses signer ${signer.key} (tag ${tag}, ${guard.accounts.length} accounts)` };
   }
   return { ok: true, guards: added.length };
 }

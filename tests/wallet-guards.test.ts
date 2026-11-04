@@ -9,6 +9,7 @@ const budget = () => [ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 
 const transfer = (lamports = 1, to = target) => SystemProgram.transfer({ fromPubkey: wallet.publicKey, toPubkey: to, lamports });
 const swap = (extra: PublicKey = Keypair.generate().publicKey) => new TransactionInstruction({ programId: new PublicKey("dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"), keys: [{ pubkey: wallet.publicKey, isSigner: true, isWritable: true }, { pubkey: target, isSigner: false, isWritable: true }, { pubkey: extra, isSigner: false, isWritable: false }], data: Buffer.from([1, 2, 3]) });
 const guard = (...accounts: { pubkey: PublicKey; isSigner?: boolean; isWritable?: boolean }[]) => new TransactionInstruction({ programId: LIGHTHOUSE_PROGRAM_ID, keys: accounts.map((a) => ({ pubkey: a.pubkey, isSigner: a.isSigner ?? false, isWritable: a.isWritable ?? false })), data: Buffer.from([9]) });
+const guardTag = (tag: number, ...accounts: { pubkey: PublicKey; isSigner?: boolean; isWritable?: boolean }[]) => new TransactionInstruction({ ...guard(...accounts), data: Buffer.from([tag, 1, 2, 3]) });
 const reader = Keypair.generate().publicKey, shared = swap(reader);
 
 const message = (instructions: TransactionInstruction[], payer = wallet.publicKey, hash = blockhash) => new Transaction({ feePayer: payer, recentBlockhash: hash }).add(...instructions).serializeMessage();
@@ -64,8 +65,41 @@ describe("verifyWalletMessage", () => {
     refused([...reviewedList(), guard({ pubkey: Keypair.generate().publicKey, isSigner: true })], /signers changed/);
   });
 
-  it("refuses a guard that touches the wallet, or raises any account's permissions", () => {
-    refused([...reviewedList(), guard({ pubkey: wallet.publicKey })], /guard instruction uses signer/);
+  it("accepts only an account-info assertion naming the fee payer as its single target", () => {
+    expect(check([...reviewedList(), guardTag(6, { pubkey: wallet.publicKey })])).toEqual({ ok: true, guards: 1 });
+    expect(check([...reviewedList(), guardTag(5, { pubkey: wallet.publicKey })])).toEqual({ ok: true, guards: 1 });
+    expect(check([...reviewedList(), guardTag(6, { pubkey: wallet.publicKey }), guardTag(9, { pubkey: target }), guardTag(15)])).toEqual({ ok: true, guards: 3 });
+    refused([...reviewedList(), guardTag(9, { pubkey: wallet.publicKey })], /uses signer .*tag 9/);
+    refused([...reviewedList(), guardTag(2, { pubkey: wallet.publicKey })], /uses signer .*tag 2/);
+    refused([...reviewedList(), guardTag(4, { pubkey: wallet.publicKey }, { pubkey: target })], /uses signer .*tag 4/);
+    refused([...reviewedList(), guardTag(6, { pubkey: wallet.publicKey }, { pubkey: target })], /uses signer .*2 accounts/);
+    refused([...reviewedList(), guardTag(6, { pubkey: target }, { pubkey: wallet.publicKey })], /uses signer/);
+  });
+
+  it("refuses Lighthouse instructions that are not assertions, including memory writes that spend the wallet's SOL", () => {
+    const memory = Keypair.generate().publicKey;
+    refused([...reviewedList(), guardTag(0, { pubkey: LIGHTHOUSE_PROGRAM_ID }, { pubkey: SystemProgram.programId }, { pubkey: wallet.publicKey }, { pubkey: memory, isWritable: true }, { pubkey: target })], /added account is a signer or writable/);
+    refused([...reviewedList(), guardTag(0, { pubkey: wallet.publicKey }, { pubkey: target })], /not an assertion: tag 0/);
+    refused([...reviewedList(), guardTag(1, { pubkey: wallet.publicKey }, { pubkey: target })], /not an assertion: tag 1/);
+    refused([...reviewedList(), guardTag(16, { pubkey: target })], /not an assertion: tag 16/);
+    refused([...reviewedList(), guardTag(17, { pubkey: target })], /not an assertion: tag 17/);
+    refused([...reviewedList(), guardTag(200, { pubkey: target })], /not an assertion: tag 200/);
+    const empty = new TransactionInstruction({ programId: LIGHTHOUSE_PROGRAM_ID, keys: [], data: Buffer.alloc(0) });
+    refused([...reviewedList(), empty], /not an assertion: tag none/);
+  });
+
+  it("does not let a wallet guard hide a second signer, a transfer, or a changed instruction", () => {
+    const wallets = guardTag(6, { pubkey: wallet.publicKey });
+    refused([...reviewedList(), wallets, guardTag(6, { pubkey: Keypair.generate().publicKey, isSigner: true })], /signers changed/);
+    refused([...reviewedList(), wallets, transfer(9, Keypair.generate().publicKey)], /added account is a signer or writable/);
+    refused([...reviewedList(), wallets, transfer(9)], /added or removed/);
+    refused([...budget(), shared, transfer(2), wallets], /reviewed instruction 3 changed/);
+    refused([...budget(), transfer(), shared, wallets], /changed or moved/);
+    refused([...reviewedList(), wallets], /fee payer changed/, Keypair.generate().publicKey);
+    expect(verifyWalletMessage(message([...reviewedList(), wallets]), reviewed()).ok).toBe(false);
+  });
+
+  it("refuses a guard that raises any account's permissions", () => {
     refused([...reviewedList(), guard({ pubkey: reader, isWritable: true })], /account permissions changed/);
     refused([...reviewedList(), guard({ pubkey: Keypair.generate().publicKey, isWritable: true })], /added account is a signer or writable/);
   });
@@ -129,6 +163,15 @@ describe("executeWalletOperation with guards", () => {
     const alter = async (t: Transaction) => { const a = new Transaction({ feePayer: t.feePayer, recentBlockhash: t.recentBlockhash }).add(...t.instructions, guard()); a.partialSign(wallet, lock); return a; };
     await expect(executeWalletOperation(f.c, f.tx, wallet.publicKey, alter, f.storage, 100, undefined, undefined, { allowWalletGuards: true })).rejects.toThrow("Phantom changed the reviewed transaction message");
     expect(f.rpc.sendRawTransaction).not.toHaveBeenCalled();
+  });
+
+  it("sends a claim with a wallet-balance assertion, and refuses a memory write through the same path", async () => {
+    const ok = setup();
+    await executeWalletOperation(ok.c, ok.tx, wallet.publicKey, phantom(guardTag(6, { pubkey: wallet.publicKey })), ok.storage, 100, undefined, undefined, { allowWalletGuards: true });
+    expect(ok.rpc.sendRawTransaction).toHaveBeenCalledTimes(1);
+    const bad = setup();
+    await expect(executeWalletOperation(bad.c, bad.tx, wallet.publicKey, phantom(guardTag(0, { pubkey: wallet.publicKey })), bad.storage, 100, undefined, undefined, { allowWalletGuards: true })).rejects.toThrow(/not an assertion: tag 0/);
+    expect(bad.rpc.sendRawTransaction).not.toHaveBeenCalled();
   });
 
   it("still refuses an invalid signature on a guarded message", async () => {
