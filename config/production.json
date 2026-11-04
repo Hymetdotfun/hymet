@@ -1,8 +1,8 @@
 {
-  "state": "prepared-not-deployed",
+  "state": "deployed-initialized",
   "cluster": "mainnet-beta",
-  "launchMode": "native-split",
-  "distributorStatus": "deferred",
+  "launchMode": "distributor",
+  "distributorStatus": "deployed-initialized",
   "nativeSplit": {
     "platformPercent": 20,
     "creatorPercent": 80,
@@ -21,7 +21,7 @@
   "dbcProgram": "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
   "dammV2Program": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
   "mainnetFinancialOperations": false,
-  "holderSplits": false,
+  "holderSplits": true,
   "programArtifact": "target/deploy/hymet_rewards_distributor.so",
   "programSha256": "fda10de4da728442da4a42a63bb1f5d8df614e49f8421c656ee2ca67f3be3e7b",
   "programBytes": 509112,

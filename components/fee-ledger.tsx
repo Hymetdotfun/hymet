@@ -14,7 +14,7 @@ type Ledger = {
   source?: string;
   chainVerified?: boolean;
   distributorEnabled?: boolean;
-  holderRewards?: { enabled: boolean; automatic: boolean; intervalHours: number };
+  holderRewards?: { enabled: boolean; automatic: boolean; intervalHours: number; mainnetPayoutVerified?: boolean };
   holderPayouts?: { mint: string; epoch: string; reward: string; paid: boolean; signature: string | null }[];
   distributorProgramId?: string | null;
   creatorTokens?: LaunchStatus[];
@@ -99,6 +99,7 @@ function FeeLedgerWallet() {
     ? new Date(totals.lastSettlementAt).toLocaleString()
     : "No confirmed settlement indexed";
   const automaticHolderPayouts = ledger?.holderRewards?.automatic === true;
+  const mainnetPayoutVerified = ledger?.holderRewards?.mainnetPayoutVerified === true;
   return (
     <>
       <section className="fees-overview" aria-labelledby="fees-overview-title">
@@ -117,7 +118,7 @@ function FeeLedgerWallet() {
 
       <section className="fees-holder-section" aria-labelledby="holder-rewards-title">
         <div className="fees-section-heading">
-          <div><h2 id="holder-rewards-title">Holder Rewards</h2><p>Passive rewards are shown only when verified payouts are active.</p></div>
+          <div><h2 id="holder-rewards-title">Holder Rewards</h2><p>{!automaticHolderPayouts ? "Passive rewards are shown only when holder payouts are enabled." : mainnetPayoutVerified ? "Enabled and verified by confirmed Mainnet payouts." : "Configured and enabled. No Mainnet payout has been verified yet."}</p></div>
         </div>
         {!automaticHolderPayouts ? (
           <p className="fees-inactive-state">Not active yet</p>
@@ -126,13 +127,13 @@ function FeeLedgerWallet() {
             {ledger.holderPayouts.map(p => <article key={`${p.mint}:${p.epoch}`}><span>Epoch {p.epoch}</span><strong>{formatHype(p.reward, true)}</strong><small>{p.paid ? `Paid${p.signature ? ` · ${p.signature.slice(0, 8)}…` : ""}` : "Scheduled"}</small></article>)}
           </div>
         ) : (
-          <p className="fees-inactive-state">Automatic payouts are active; no confirmed payouts are indexed yet.</p>
+          <p className="fees-inactive-state">No confirmed payouts are indexed for this wallet yet.</p>
         )}
       </section>
 
       {ledger?.chainVerified && !!ledger.creatorTokens?.length && (
         <section className="fees-pool-operations earn-section" aria-labelledby="pool-operations-title">
-          <div className="fees-section-heading"><div><h2 id="pool-operations-title">Your Launches</h2><p>Fees are collected, settled, migrated and paid to holders automatically.</p></div></div>
+          <div className="fees-section-heading"><div><h2 id="pool-operations-title">Your Launches</h2><p>The keeper is set up to collect, settle, migrate and pay holders without any action from you.</p></div></div>
           {ledger.creatorTokens.map((token) => {
             const creatorPct = token.creatorBps / 100, holderPct = 100 - creatorPct;
             const claimable = token.creatorClaimable ?? undefined;
@@ -151,7 +152,7 @@ function FeeLedgerWallet() {
                 imageUrl={token.imageUrl ?? undefined}
                 stage={`${stage} · ${creatorPct}% creator / ${holderPct}% holders`}
                 amount={token.creatorBps > 0 ? (claimable === undefined ? undefined : `${formatHype(claimable, true).replace(" HYPE", "")} HYPE`) : "Automatic"}
-                note={token.creatorBps > 0 ? `Your creator share, settled on-chain on ${claimNetworkLabel("mainnet-beta")}. Holder rewards are paid automatically.` : "The full creator share goes to holders automatically. There is nothing to claim."}
+                note={token.creatorBps > 0 ? `Your creator share, settled on-chain on ${claimNetworkLabel("mainnet-beta")}. Holders are paid by the keeper and never claim.` : "The full creator share goes to holders through keeper payouts. There is nothing to claim."}
                 action={token.creatorBps > 0 ? { label: hasClaim ? "Claim Creator Fees" : "No creator fees yet", disabled: busy || !hasClaim, onClick: () => void claimCreatorFees(token.mint) } : undefined}
                 advanced={
                   <div className="damm-technical-grid">

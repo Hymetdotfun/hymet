@@ -14,10 +14,11 @@ const onChain = (overrides: Partial<Record<string, unknown>> = {}) =>
   ({ ...curve({ ...defaults, name: "Native", symbol: "NAT" }, creator), feeClaimer: platform, quoteMint: HYPE_MINT, ...overrides }) as unknown as PoolConfig;
 
 describe("Phase 1 native-split launch mode", () => {
-  it("is the production mode and fails closed to native-split", () => {
-    expect(production.launchMode).toBe("native-split");
+  it("keeps the 20/80 split, leaves financial operations off in the manifest and fails closed to native-split", () => {
+    expect(production.launchMode).toBe("distributor");
     expect(production.nativeSplit).toMatchObject({ platformPercent: 20, creatorPercent: 80, holderPercent: 0 });
-    expect(production.holderSplits).toBe(false);
+    expect(production.holderSplits).toBe(true);
+    expect(production.mainnetFinancialOperations).toBe(false);
     expect(launchMode({})).toBe("native-split");
     expect(launchMode({ HYMET_LAUNCH_MODE: "anything" })).toBe("native-split");
   });

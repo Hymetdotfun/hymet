@@ -4,8 +4,9 @@ import { HYPE_MINT } from "../../../lib/quote-assets";
 import { PublicKey } from "@solana/web3.js";
 import { verifiedDistributor } from "../../../lib/distributor-readiness";
 import { creatorLaunchStatuses } from "../../../lib/launch-status";
-import { HOLDER_REWARDS_ACTIVE_NOTE, HOLDER_REWARDS_DISABLED_NOTE, HOLDER_REWARDS_PENDING_NOTE, NATIVE_SPLIT, holderPayoutsLive, launchMode } from "../../../lib/launch-mode";
+import { HOLDER_REWARDS_CONFIGURED_NOTE, HOLDER_REWARDS_DISABLED_NOTE, HOLDER_REWARDS_PENDING_NOTE, HOLDER_REWARDS_VERIFIED_NOTE, NATIVE_SPLIT, holderPayoutsLive, launchMode } from "../../../lib/launch-mode";
 import { HOLDER_PAYOUT_POLICY } from "../../../lib/holder-payouts.mjs";
+import { holderRewardsStatus } from "../../../lib/holder-payout-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
         )).rows.map((r) => ({ mint: r.mint_address, epoch: r.epoch, reward: amount(r.reward_amount), paid: r.claimed_amount === r.reward_amount, signature: r.signature }))
       : [];
     const row = totals.rows[0];
+    const payoutStatus = await holderRewardsStatus();
     // Creator view of distributor launches: claimable share, automatic settlement/payout/migration status.
     const creatorTokens = wallet && distributor ? await creatorLaunchStatuses(distributor.connection, distributor.program, new PublicKey(wallet).toBase58()) : [];
     let preparedEpochs:{mint:string;epoch:string;fundedHype:string}[]=[];
@@ -83,8 +85,9 @@ export async function GET(request: NextRequest) {
         distributorEnabled: Boolean(distributor),
         launchMode: launchMode(),
         feeSplit: distributor ? null : NATIVE_SPLIT,
-        // "automatic" only when the payout keeper is also owner-verified; never inferred from the program alone.
-        holderRewards: { enabled: Boolean(distributor), automatic: Boolean(distributor) && holderPayoutsLive(), intervalHours: HOLDER_PAYOUT_POLICY.intervalHours },
+        // "automatic" means the payout keeper is owner-configured, never inferred from the program alone, and is not
+        // evidence of a payout. Only mainnetPayoutVerified reports that one actually happened.
+        holderRewards: { enabled: Boolean(distributor), automatic: Boolean(distributor) && holderPayoutsLive(), intervalHours: HOLDER_PAYOUT_POLICY.intervalHours, mainnetPayoutVerified: payoutStatus.mainnetPayoutVerified, mainnetPayoutsIndexed: payoutStatus.mainnetPayoutsIndexed, lastMainnetPayoutAt: payoutStatus.lastMainnetPayoutAt },
         quote: "HYPE",
         totals: {
           accrued: amount(row?.accrued),
@@ -101,7 +104,7 @@ export async function GET(request: NextRequest) {
         note: !distributor
           ? HOLDER_REWARDS_DISABLED_NOTE
           : holderPayoutsLive()
-            ? HOLDER_REWARDS_ACTIVE_NOTE
+            ? (payoutStatus.mainnetPayoutVerified ? HOLDER_REWARDS_VERIFIED_NOTE : HOLDER_REWARDS_CONFIGURED_NOTE)
             : HOLDER_REWARDS_PENDING_NOTE,
       },
       { headers: { "Cache-Control": "no-store" } },

@@ -38,5 +38,13 @@ export const HOLDER_REWARDS_DISABLED_NOTE =
 export const HOLDER_REWARDS_PENDING_NOTE =
   "Holder reward fees are held in the distributor's on-chain holder pool. Automatic payouts are not active yet; nothing is paid until the payout keeper is verified.";
 
-export const HOLDER_REWARDS_ACTIVE_NOTE =
-  "Holder rewards are paid automatically in HYPE about every 24 hours from on-chain balance snapshots. No staking or claiming. Amounts below the payout minimum carry over to a later payout.";
+const HOLDER_REWARDS_MECHANISM =
+  "the payout keeper pays HYPE about every 24 hours from on-chain balance snapshots. No staking or claiming. Amounts below the payout minimum carry over to a later payout.";
+
+/** Configured by the owner; says nothing about a payout having happened. */
+export const HOLDER_REWARDS_CONFIGURED_NOTE =
+  `Holder rewards are configured and enabled: ${HOLDER_REWARDS_MECHANISM} No Mainnet holder payout has been verified yet.`;
+
+/** Only with a recorded, confirmed Mainnet payout (lib/holder-payout-status.ts). */
+export const HOLDER_REWARDS_VERIFIED_NOTE =
+  `Holder rewards are enabled and verified by confirmed Mainnet payouts: ${HOLDER_REWARDS_MECHANISM}`;

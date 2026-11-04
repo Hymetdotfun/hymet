@@ -4,7 +4,7 @@ import { HOLDER_PAYOUT_POLICY, INCINERATOR, chunkLeaf, decodeTokenAccount, eligi
 import { closeHolderEpoch, decodeFeePool, distributeHolderChunk, fundDistributorEpoch } from "../lib/distributor-engine";
 import { decodeRewardEpoch } from "../lib/holder-keeper";
 import { decodeDistributorEvents } from "../lib/distributor-events.mjs";
-import { HOLDER_REWARDS_ACTIVE_NOTE, holderPayoutsLive } from "../lib/launch-mode";
+import { HOLDER_REWARDS_CONFIGURED_NOTE, HOLDER_REWARDS_VERIFIED_NOTE, holderPayoutsLive } from "../lib/launch-mode";
 import { createHash } from "node:crypto";
 
 const MINT = "So11111111111111111111111111111111111111112";
@@ -195,6 +195,8 @@ describe("payout costs and activation gate", () => {
     expect(holderPayoutsLive(live)).toBe(true);
     for (const key of Object.keys(live)) expect(holderPayoutsLive({ ...live, [key]: "false" })).toBe(false);
     expect(holderPayoutsLive({})).toBe(false);
-    expect(HOLDER_REWARDS_ACTIVE_NOTE).toMatch(/No staking or claiming/);
+    expect(HOLDER_REWARDS_CONFIGURED_NOTE).toMatch(/No staking or claiming/);
+    expect(HOLDER_REWARDS_CONFIGURED_NOTE).toMatch(/No Mainnet holder payout has been verified yet/);
+    expect(HOLDER_REWARDS_VERIFIED_NOTE).not.toMatch(/not been verified/);
   });
 });
