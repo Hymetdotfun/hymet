@@ -30,7 +30,7 @@ const HOLDER_SECTIONS_CONFIGURED: DocsSection[] = [
   { id: "how-payouts-work", title: "How the split and payouts work", bullets: [
     "HYMET's share stays 20%. The creator divides the remaining 80% between themselves and holders, from 0% to 100%, when launching.",
     "The split is fixed at launch and enforced on-chain by the distributor. It cannot be changed later.",
-    "The keeper settles trading fees into the distributor and, about every 24 hours, takes one balance snapshot and pays holders in HYPE.",
+    "The keeper settles trading fees into the distributor and, about every 15 minutes, takes one balance snapshot and pays holders in HYPE.",
     "Holders do not stake, lock or claim anything. Payouts go directly to each holder's HYPE account.",
     "A payout needs at least 0.01 HYPE, or 0.05 HYPE when a new HYPE account must be created. Smaller amounts carry over to a later payout.",
     "Creators claim their own share on the Fees page. A launch that keeps 100% with the creator uses Meteora's native split instead.",

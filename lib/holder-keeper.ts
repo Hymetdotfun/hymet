@@ -1,4 +1,4 @@
-// Holder payout keeper: one run per token about every 24 hours.
+// Holder payout keeper: at most one payout round per token per interval (HOLDER_PAYOUT_POLICY.intervalMinutes, in real time).
 //   finish/close any open epoch → settle Meteora fees into the distributor →
 //   snapshot holders at one slot → plan (threshold + carry) → fund the committed root →
 //   create missing HYPE accounts → push every chunk → close the epoch.
@@ -27,12 +27,31 @@ export type KeeperContext = {
   log: (message: string, data?: unknown) => void;
   dryRun: boolean;
   policy?: typeof HOLDER_PAYOUT_POLICY;
-  /** Minimum slots between holder snapshots (the advertised payout interval). Migration, registration and settlement
-   *  still run on every tick, so a short timer serves instant graduation without paying holders every few minutes. */
-  payoutIntervalSlots?: bigint;
+  /** Minimum real seconds between holder snapshots (the advertised payout interval), measured from the last snapshot
+   *  slot's block time because slot length varies. Migration, registration and settlement still run on every tick, so a
+   *  short timer serves instant graduation without paying holders every few minutes. */
+  payoutIntervalSeconds?: number;
+  /** Wall clock in seconds; injectable for tests. */
+  now?: () => number;
+  /** Last snapshot per mint that found no holder to pay. Losing it only costs one extra snapshot. */
+  emptySnapshots?: EmptySnapshotStore;
   /** Settlement failures do not stop payouts of HYPE already settled, so they are reported here rather than thrown. */
   onSettlementError?: (mint: string, error: string) => void;
 };
+
+export type EmptySnapshot = { at: number; unallocated: string };
+export type EmptySnapshotStore = { get: (mint: string) => EmptySnapshot | undefined; set: (mint: string, value: EmptySnapshot | null) => void };
+/** With no new HYPE in the pool only balance changes could make a holder payable, so an unchanged pool rechecks this rarely. */
+export const EMPTY_SNAPSHOT_RECHECK_SECONDS = 6 * 3600;
+
+/** Whether a snapshot would only repeat one that found no holder to pay. */
+export function emptySnapshotStillCurrent(previous: EmptySnapshot | undefined, unallocated: bigint, now: number, intervalSeconds: number) {
+  if (!previous) return false;
+  const age = now - previous.at;
+  if (age < 0) return false;
+  if (age < intervalSeconds) return true;
+  return previous.unallocated === unallocated.toString() && age < EMPTY_SNAPSHOT_RECHECK_SECONDS;
+}
 
 /** Never fund an epoch the keeper cannot finish: planned fees and new accounts plus the epoch rent, with headroom. */
 export const KEEPER_SOL_HEADROOM_LAMPORTS = 5_000_000n;
@@ -177,10 +196,17 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   const policy = k.policy ?? HOLDER_PAYOUT_POLICY;
   const smallest = policy.minPayout < policy.minPayoutNewAccount ? policy.minPayout : policy.minPayoutNewAccount;
   if (pool.holderUnallocated < smallest) return { mint: token.mint, epoch: pool.nextEpoch.toString(), skipped: "undistributed holder rewards below the payout minimum" };
-  if (k.payoutIntervalSlots && pool.lastSnapshotSlot > 0n) {
-    const due = pool.lastSnapshotSlot + k.payoutIntervalSlots, slot = BigInt(await k.connection.getSlot("confirmed"));
-    if (slot < due) return { mint: token.mint, epoch: pool.nextEpoch.toString(), skipped: `next holder payout due after slot ${due}` };
+  if (k.payoutIntervalSeconds && pool.lastSnapshotSlot > 0n) {
+    // Unknown time never pays early: this run skips, the next one retries, and a lasting failure raises payout-overdue.
+    const last = await k.connection.getBlockTime(Number(pool.lastSnapshotSlot)).catch(() => null);
+    if (last === null) return { mint: token.mint, epoch: pool.nextEpoch.toString(), skipped: "last snapshot time unavailable; retrying next run" };
+    const due = last + k.payoutIntervalSeconds;
+    if ((k.now?.() ?? Date.now() / 1000) < due) return { mint: token.mint, epoch: pool.nextEpoch.toString(), skipped: `next holder payout due after ${new Date(due * 1000).toISOString()}` };
   }
+
+  const now = k.now?.() ?? Date.now() / 1000;
+  if (k.payoutIntervalSeconds && emptySnapshotStillCurrent(k.emptySnapshots?.get(token.mint), pool.holderUnallocated, now, k.payoutIntervalSeconds))
+    return { mint: token.mint, epoch: pool.nextEpoch.toString(), payouts: 0, skipped: "no holder reached the payout minimum at the last snapshot; amounts carry over" };
 
   // 3. One consistent snapshot: every token account of the mint read at one RPC context slot.
   const snapshot = await k.connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
@@ -195,7 +221,10 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   const plan = planHolderEpoch({ mint: token.mint, epoch: pool.nextEpoch, snapshotSlot: snapshot.context.slot, available: pool.holderUnallocated, holders, carry, hasHypeAccount: (w) => have.has(w), policy: k.policy });
   const cost = payoutCost({ payouts: plan.payouts.length, newAccounts: plan.payouts.filter((p) => p.newAccount).length });
   const summary = { mint: token.mint, epoch: plan.epoch.toString(), snapshotSlot: snapshot.context.slot, holders: holders.length, payouts: plan.payouts.length, chunks: plan.chunks.length, fundedHype: plan.fundedAmount.toString(), carriedHype: [...plan.carryOut.values()].reduce((s, v) => s + v, 0n).toString(), costLamports: cost.total.toString() };
-  if (!plan.payouts.length) return { ...summary, skipped: "no holder reached the payout minimum; amounts carry over" };
+  if (!plan.payouts.length) {
+    if (!k.dryRun) k.emptySnapshots?.set(token.mint, { at: now, unallocated: pool.holderUnallocated.toString() });
+    return { ...summary, skipped: "no holder reached the payout minimum; amounts carry over" };
+  }
   const needed = cost.total + cost.refundableEpochRent + KEEPER_SOL_HEADROOM_LAMPORTS;
   const balance = BigInt(await k.connection.getBalance(k.authority.publicKey, "confirmed"));
   if (balance < needed) throw Error(`Keeper holds ${balance} lamports; funding epoch ${plan.epoch} needs ${needed}. Top up the keeper key`);
@@ -212,6 +241,7 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
     await k.simulate(fund, `fund epoch ${plan.epoch}`);
     return { ...summary, dryRun: true };
   }
+  k.emptySnapshots?.set(token.mint, null);
   await persistPlan(k, plan);
   await k.send(fund, `fund epoch ${plan.epoch}`);
   await k.reindex();

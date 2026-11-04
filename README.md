@@ -94,7 +94,7 @@ HYMET runs in two modes:
 | Mode | Status | How the 80% is handled |
 |---|---|---|
 | **Native split** | Active | Meteora pays HYMET (20%) and the creator (80%) directly; after graduation each owns a permanently locked LP position |
-| **Distributor** | Deployed and initialized; verified in private Mainnet testing; public launches not yet open | All fees go to the HYMET distributor program, which pays HYMET 20%, lets the creator claim their share and pushes the holders' share to holders on a 24-hour cycle |
+| **Distributor** | Deployed and initialized; verified in private Mainnet testing; public launches not yet open | All fees go to the HYMET distributor program, which pays HYMET 20%, lets the creator claim their share and pushes the holders' share to holders about every 15 minutes, once amounts reach the payout minimum |
 
 The distributor holds no keys of its own: its fee pool is a program-derived address that can only claim Meteora fees
 and pay them out by the fixed rules. See [Distributor program](docs/DISTRIBUTOR.md).

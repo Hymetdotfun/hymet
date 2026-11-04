@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         feeSplit: distributor ? null : NATIVE_SPLIT,
         // "automatic" means the payout keeper is owner-configured, never inferred from the program alone, and is not
         // evidence of a payout. Only mainnetPayoutVerified reports that one actually happened.
-        holderRewards: { enabled: Boolean(distributor), automatic: Boolean(distributor) && holderPayoutsLive(), intervalHours: HOLDER_PAYOUT_POLICY.intervalHours, mainnetPayoutVerified: payoutStatus.mainnetPayoutVerified, mainnetPayoutsIndexed: payoutStatus.mainnetPayoutsIndexed, lastMainnetPayoutAt: payoutStatus.lastMainnetPayoutAt },
+        holderRewards: { enabled: Boolean(distributor), automatic: Boolean(distributor) && holderPayoutsLive(), intervalMinutes: HOLDER_PAYOUT_POLICY.intervalMinutes, mainnetPayoutVerified: payoutStatus.mainnetPayoutVerified, mainnetPayoutsIndexed: payoutStatus.mainnetPayoutsIndexed, lastMainnetPayoutAt: payoutStatus.lastMainnetPayoutAt },
         quote: "HYPE",
         totals: {
           accrued: amount(row?.accrued),

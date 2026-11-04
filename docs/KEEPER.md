@@ -6,7 +6,7 @@ graduated curve, registering the canonical DAMM v2 pool, collecting fees, and pa
 ```bash
 npm run rewards:keeper                                  # plan and simulate only
 npm run rewards:keeper -- --send                        # broadcast (Mainnet needs every gate open)
-npm run rewards:keeper -- --send --payout-interval-hours=24 --min-payout=<base units>
+npm run rewards:keeper -- --send --payout-interval-minutes=15 --min-payout=<base units>
 ```
 
 ## One run, per distributor token
@@ -17,7 +17,7 @@ flowchart TD
     B -- yes --> C[Migrate DBC → DAMM v2]
     B -- no --> D
     C --> D[Settle: drain DBC partner fees, register the canonical DAMM v2 pool, settle every fee-pool position with pending fees]
-    D --> E{Holder pool ≥ minimum and 24 h since the last snapshot?}
+    D --> E{Holder pool ≥ minimum and 15 min since the last snapshot?}
     E -- no --> Z[Done]
     E -- yes --> F[Snapshot holders at one slot]
     F --> G[Plan payouts, carry small amounts]
@@ -32,7 +32,7 @@ Every step resumes from chain state, so a failed or interrupted run is simply fi
 
 - **Settlement** is skipped when nothing is collectible. Up to 6 settlements run per token per run, so extra
   positions someone adds to the fee pool cannot exhaust the keeper's SOL.
-- **Snapshots** run at most once per `--payout-interval-hours` (default 24) per token, while migration and settlement
+- **Snapshots** run at most once per `--payout-interval-minutes` (default 15, measured from the last snapshot's block time) per token, while migration and settlement
   run on every tick.
 - **SOL guard.** A round is funded only if the keeper holds its planned fees, new holder-account rent and epoch rent,
   plus 0.005 SOL of headroom.
@@ -68,8 +68,8 @@ can notify Telegram (`HYMET_TELEGRAM_BOT_TOKEN`, `HYMET_TELEGRAM_CHAT_ID`):
 | `keeper-sol-low` | Keeper balance below 0.05 SOL |
 | `settlement-stalled` | Fee settlement for a token keeps failing |
 | `migration-stalled` | Migration keeps failing, or a curve completed 30 minutes ago with no registered DAMM v2 pool |
-| `payout-overdue` | Holder HYPE that can be paid has waited more than 30 hours since the last snapshot |
-| `epoch-open-too-long` | A payout round open for more than 6 hours |
+| `payout-overdue` | Holder HYPE that can be paid has waited more than 1 hour since the last snapshot, and is not carrying below the minimum |
+| `epoch-open-too-long` | A payout round open for more than 1 hour |
 | `unexpected-epoch` | A round funded on-chain that matches no keeper-prepared root: treat as a keeper-key compromise, stop the keeper and rotate the key in the owner console |
 | `alert-check-failed` | The health check itself cannot reach the database or RPC |
 
@@ -81,8 +81,10 @@ if it stops arriving, the server cannot send alerts at all.
 
 ## Costs
 
-Per token per day with up to 6 holders, settlement plus one payout round costs about 0.00004 SOL, plus about
-0.000009 SOL per extra 6 holders. Creating a holder's HYPE account costs about 0.0015 SOL of rent, paid once by the
+With up to 6 holders, settlement plus one payout round costs about 0.00004 SOL, plus about 0.000009 SOL per extra 6
+holders. At one round every 15 minutes that is up to about 0.004 SOL per token per day; a round only runs when a holder has
+reached the payout minimum. After a snapshot that finds nobody to pay, the keeper does not repeat it until new HYPE has
+reached the pool and 15 minutes have passed, or 6 hours have passed. Creating a holder's HYPE account costs about 0.0015 SOL of rent, paid once by the
 keeper, so a holder must be owed at least 0.05 HYPE before the keeper creates one.
 
 ## RPC

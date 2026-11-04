@@ -39,7 +39,7 @@ export const HOLDER_REWARDS_PENDING_NOTE =
   "Holder reward fees are held in the distributor's on-chain holder pool. Automatic payouts are not active yet; nothing is paid until the payout keeper is verified.";
 
 const HOLDER_REWARDS_MECHANISM =
-  "the payout keeper pays HYPE about every 24 hours from on-chain balance snapshots. No staking or claiming. Amounts below the payout minimum carry over to a later payout.";
+  "the payout keeper pays HYPE about every 15 minutes from on-chain balance snapshots. No staking or claiming. Amounts below the payout minimum carry over to a later payout.";
 
 /** Configured by the owner; says nothing about a payout having happened. */
 export const HOLDER_REWARDS_CONFIGURED_NOTE =

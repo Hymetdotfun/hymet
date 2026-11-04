@@ -14,7 +14,7 @@ type Ledger = {
   source?: string;
   chainVerified?: boolean;
   distributorEnabled?: boolean;
-  holderRewards?: { enabled: boolean; automatic: boolean; intervalHours: number; mainnetPayoutVerified?: boolean };
+  holderRewards?: { enabled: boolean; automatic: boolean; intervalMinutes: number; mainnetPayoutVerified?: boolean };
   holderPayouts?: { mint: string; epoch: string; reward: string; paid: boolean; signature: string | null }[];
   distributorProgramId?: string | null;
   creatorTokens?: LaunchStatus[];

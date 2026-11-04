@@ -32,7 +32,7 @@ liquidity, permanently locked).
 | `settle_damm_v2` | Anyone | Claims the fee pool's DAMM v2 position fees into the vault and splits them |
 | `fund_holder_epoch` | Keeper | Moves already-collected holder HYPE into a payout round committed by a Merkle root over payout chunks |
 | `distribute_holder_chunk` | Anyone | Pays one chunk (up to 6 holders) of a funded round after verifying its Merkle proof |
-| `close_holder_epoch` | Keeper | Closes a fully paid round, or an expired one (about 7 days); any unpaid amount returns to the **holder** pool |
+| `close_holder_epoch` | Keeper | Closes a fully paid round, or an expired one (1,512,000 slots: about 7 days at 400 ms slots, sooner when slots run faster); any unpaid amount returns to the **holder** pool |
 | `claim_creator` | Creator | Sends the creator's accumulated share to the creator's HYPE account |
 
 ## Fee math
@@ -60,7 +60,7 @@ token instead of HYPE is rejected and rolled back; HYMET launches only collect f
    chunk index, sorted wallets, token balances and rewards.
 4. It pushes every chunk with `distribute_holder_chunk`. Holders never sign or claim. Each chunk can be paid once, only
    to the wallet's canonical HYPE account, and never beyond the funded amount.
-5. It closes the round. Rounds run at most once every 24 hours per token.
+5. It closes the round. The keeper runs rounds at most once every 15 real minutes per token, measured from block timestamps. The program sets no minimum interval.
 
 ## Security properties
 

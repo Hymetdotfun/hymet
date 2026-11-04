@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALERT_POLICY, formatNotification, keeperAlerts, markSent, planNotifications, redactSecrets } from "../lib/keeper-alerts.mjs";
+import { ALERT_POLICY, KEEPER_ALERT_LIMITS, formatNotification, keeperAlerts, limitsForSlotTime, markSent, planNotifications, redactSecrets } from "../lib/keeper-alerts.mjs";
 import { sendTelegram, telegramConfig } from "../lib/telegram.mjs";
 
 type Input = {
@@ -35,10 +35,10 @@ describe("keeper alerts", () => {
     expect(codes({ status: { at: "2026-11-03T11:59:00Z", ok: false, errors: [{ mint: "MINT", error: "429" }] } })).toEqual(["keeper-failed"]);
   });
 
-  it("flag an epoch open for more than 6 hours, not before", () => {
+  it("flag an epoch open for more than 1 hour, not before", () => {
     const pool = (age: bigint) => [{ mint: "MINT", nextEpoch: 2n, openEpoch: { number: 1n, snapshotSlot: 1_000_000n - age } }];
-    expect(codes({ pools: pool(54_001n) })).toEqual(["epoch-open-too-long"]);
-    expect(codes({ pools: pool(54_000n) })).toEqual([]);
+    expect(codes({ pools: pool(9_001n) })).toEqual(["epoch-open-too-long"]);
+    expect(codes({ pools: pool(9_000n) })).toEqual([]);
   });
 
   it("flag a service that is not running", () => {
@@ -59,10 +59,10 @@ describe("keeper alerts", () => {
   });
 
   it("flag holder HYPE past its payout time, unless it is carrying or below the minimum", () => {
-    const pool = { mint: "MINT", nextEpoch: 2n, openEpoch: null, holderUnallocated: 10_000_000n, lastSnapshotSlot: 1_000_000n - 270_001n };
+    const pool = { mint: "MINT", nextEpoch: 2n, openEpoch: null, holderUnallocated: 10_000_000n, lastSnapshotSlot: 1_000_000n - 9_001n };
     expect(codes({ pools: [pool] })).toEqual(["payout-overdue"]);
     expect(codes({ pools: [{ ...pool, lastSnapshotSlot: 0n }] })).toEqual(["payout-overdue"]);
-    expect(codes({ pools: [{ ...pool, lastSnapshotSlot: 1_000_000n - 270_000n }] })).toEqual([]);
+    expect(codes({ pools: [{ ...pool, lastSnapshotSlot: 1_000_000n - 9_000n }] })).toEqual([]);
     expect(codes({ pools: [{ ...pool, holderUnallocated: 9_999_999n }] })).toEqual([]);
     expect(codes({ pools: [pool], status: { at: "2026-11-03T11:59:00Z", ok: true, carrying: ["MINT"] } })).toEqual([]);
   });
@@ -71,7 +71,29 @@ describe("keeper alerts", () => {
     const rogue = { indexedEpochs: new Map([["MINT", new Set(["0"])]]) };
     expect(codes({ ...rogue, pools: [{ mint: "MINT", nextEpoch: 2n, openEpoch: null }] })).toEqual(["unexpected-epoch"]);
     expect(codes({ ...rogue, pools: [{ mint: "MINT", nextEpoch: 2n, openEpoch: { number: 1n, snapshotSlot: 999_000n } }] })).toEqual([]);
-    expect(codes({ ...rogue, pools: [{ mint: "MINT", nextEpoch: 2n, openEpoch: { number: 1n, snapshotSlot: 990_000n } }] })).toEqual(["unexpected-epoch"]);
+    expect(codes({ ...rogue, pools: [{ mint: "MINT", nextEpoch: 2n, openEpoch: { number: 1n, snapshotSlot: 995_000n } }] })).toEqual(["unexpected-epoch"]);
+  });
+});
+
+describe("alert windows at the measured slot time", () => {
+  it("keep the same real durations when slots are faster than nominal", () => {
+    const fast = limitsForSlotTime(200);
+    expect(fast.maxOpenEpochSlots).toBe(18_000n);
+    expect(fast.payoutOverdueSlots).toBe(18_000n);
+    expect(fast.indexGraceSlots).toBe(3_000n);
+    expect(fast.minLamports).toBe(KEEPER_ALERT_LIMITS.minLamports);
+  });
+  it("keep nominal windows for unknown or implausible slot times", () => {
+    for (const bad of [NaN, 0, 50, 5_000, Infinity]) expect(limitsForSlotTime(bad)).toEqual(KEEPER_ALERT_LIMITS);
+    expect(limitsForSlotTime(400)).toEqual(KEEPER_ALERT_LIMITS);
+  });
+  it("do not call a round overdue before 1 real hour at fast slots", () => {
+    const base = { now, keeperLamports: 200_000_000n, status: { at: "2026-11-03T11:55:00Z", ok: true, errors: [] }, indexedEpochs: new Map([["MINT", new Set(["0"])]]) };
+    const pool = (ago: bigint) => [{ mint: "MINT", nextEpoch: 1n, openEpoch: null, holderUnallocated: 20_000_000n, lastSnapshotSlot: 10_000_000n - ago }];
+    const at = (ago: bigint) => keeperAlerts({ ...base, slot: 10_000_000n, pools: pool(ago) }, limitsForSlotTime(214.5)).map((a) => a.code);
+    expect(at(4_200n)).toEqual([]); // about 15 real minutes, a normal gap
+    expect(at(15_000n)).toEqual([]); // about 54 real minutes
+    expect(at(17_000n)).toEqual(["payout-overdue"]); // about 61 real minutes
   });
 });
 

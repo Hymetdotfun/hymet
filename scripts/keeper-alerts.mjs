@@ -16,10 +16,20 @@ import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import pg from "pg";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { formatNotification, keeperAlerts, markSent, planNotifications, redactSecrets } from "../lib/keeper-alerts.mjs";
+import { formatNotification, keeperAlerts, limitsForSlotTime, markSent, planNotifications, redactSecrets } from "../lib/keeper-alerts.mjs";
 import { sendTelegram, telegramConfig } from "../lib/telegram.mjs";
 
 const FEE_POOL = createHash("sha256").update("account:FeePool").digest().subarray(0, 8);
+
+async function measuredSlotMs(c) {
+  try {
+    const samples = await c.getRecentPerformanceSamples(12);
+    const slots = samples.reduce((s, x) => s + x.numSlots, 0), seconds = samples.reduce((s, x) => s + x.samplePeriodSecs, 0);
+    return slots > 0 ? (seconds * 1000) / slots : NaN;
+  } catch {
+    return NaN; // limitsForSlotTime keeps the nominal windows
+  }
+}
 
 function unitState(name) {
   return new Promise((resolve) => {
@@ -115,7 +125,7 @@ async function main() {
       "SELECT mint_address, last_error, EXTRACT(EPOCH FROM now()-requested_at)*1000 AS age_ms FROM graduation_requests WHERE status<>'done' AND mint_address=ANY($1) AND requested_at < now()-interval '30 minutes'",
       [mints],
     )).rows.map((r) => ({ mint: String(r.mint_address), ageMs: Number(r.age_ms), lastError: r.last_error, dammRegistered: dammRegistered.get(String(r.mint_address)) ?? false }));
-    const alerts = keeperAlerts({ now: Date.now(), slot: BigInt(slot), keeperLamports: BigInt(lamports), status, pools, indexedEpochs, units, graduations });
+    const alerts = keeperAlerts({ now: Date.now(), slot: BigInt(slot), keeperLamports: BigInt(lamports), status, pools, indexedEpochs, units, graduations }, limitsForSlotTime(await measuredSlotMs(c)));
     const report = { at: new Date().toISOString(), keeper: keeper.toBase58(), keeperLamports: lamports, tokens: mints.length, alerts };
     console.log(JSON.stringify(report));
     if (alerts.length && process.env.HYMET_ALERT_WEBHOOK_URL) {

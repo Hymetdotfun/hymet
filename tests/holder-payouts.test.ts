@@ -190,6 +190,10 @@ describe("payout costs and activation gate", () => {
     expect(c.refundableEpochRent).toBe((128n + 149n + 21n) * 5_080n);
   });
 
+  it("pays about every 15 minutes and keeps the 0.01 and 0.05 HYPE minimums", () => {
+    expect(HOLDER_PAYOUT_POLICY).toMatchObject({ intervalMinutes: 15, minPayout: 10_000_000n, minPayoutNewAccount: 50_000_000n });
+  });
+
   it("reports holder rewards as automatic only when every gate is verified", () => {
     const live = { HYMET_LAUNCH_MODE: "distributor", HYMET_DISTRIBUTOR_VERIFIED: "true", HYMET_DISTRIBUTOR_APP_VERIFIED: "true", HYMET_HOLDER_PAYOUTS_VERIFIED: "true" };
     expect(holderPayoutsLive(live)).toBe(true);

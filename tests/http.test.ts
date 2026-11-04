@@ -39,6 +39,8 @@ it("bounds actual request bytes rather than trusting content-length", async () =
 it("accepts only the configured public origin behind a reverse proxy", () => {
   const prev = process.env.HYMET_PUBLIC_ORIGIN;
   process.env.HYMET_PUBLIC_ORIGIN = "https://hymet.example";
+  // A second host behind the same proxy, such as the old preview name, is refused once the origin moves.
+  expect(trustedHost(new Request("http://127.0.0.1:3919/api/x", { headers: { host: "old-preview.example" } }))).toBe(false);
   try {
     const proxied = (host: string, origin?: string) =>
       new Request("http://127.0.0.1:3919/api/graduation/x", { headers: { host, ...(origin ? { origin } : {}) } });

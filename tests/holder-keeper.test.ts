@@ -1,9 +1,10 @@
+import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { Connection, Keypair, PublicKey, type Transaction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { distributorAddresses, holderEpochAddress } from "../lib/distributor-engine";
-import { runHolderPayouts, type KeeperContext } from "../lib/holder-keeper";
+import { emptySnapshotStillCurrent, runHolderPayouts, type KeeperContext } from "../lib/holder-keeper";
 
 const program = new PublicKey("9X9fnj4Uh9WC9nmxCahTVsixHZ6VGxNpMesuGhK239Px");
 const mint = Keypair.generate().publicKey;
@@ -105,12 +106,89 @@ describe("holder payout keeper", () => {
   it("pays at most once per payout interval while settlement keeps running every tick", async () => {
     const pool = feePool({ creatorBps: 5_000, unallocated: 36_000_000_000n, nextEpoch: 1n, lastSnapshotSlot: 4_000n });
     const early = harness(pool);
-    early.k.payoutIntervalSlots = 216_000n; // 24 h; the last snapshot was 242 slots ago
-    expect(await runHolderPayouts(early.k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() })).toMatchObject({ skipped: "next holder payout due after slot 220000" });
+    const snapshotAt = 1_000_000;
+    const clock = (k: typeof early.k, seconds: number, blockTime: number | null = snapshotAt) => {
+      k.payoutIntervalSeconds = HOLDER_PAYOUT_POLICY.intervalMinutes * 60;
+      k.now = () => seconds;
+      (k.connection as unknown as { getBlockTime: () => Promise<number | null> }).getBlockTime = async () => blockTime;
+    };
+    clock(early.k, snapshotAt + 899); // one second short of 15 real minutes, however many slots have passed
+    expect(await runHolderPayouts(early.k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() })).toMatchObject({ skipped: expect.stringMatching(/next holder payout due after 1970-01-/) });
     expect(early.sent).toEqual([]);
     const due = harness(pool);
-    due.k.payoutIntervalSlots = 200n;
+    clock(due.k, snapshotAt + 900);
     expect(await runHolderPayouts(due.k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() })).toMatchObject({ payouts: 8, closed: true });
+  });
+
+  describe("redundant snapshots", () => {
+    const interval = 900, t0 = 2_000_000;
+    it("decide from the pool and the last empty snapshot", () => {
+      const e = { at: t0, unallocated: "100" };
+      expect(emptySnapshotStillCurrent(undefined, 100n, t0, interval)).toBe(false);
+      expect(emptySnapshotStillCurrent(e, 100n, t0 + 899, interval)).toBe(true);
+      expect(emptySnapshotStillCurrent(e, 150n, t0 + 899, interval)).toBe(true); // new HYPE still waits for the interval
+      expect(emptySnapshotStillCurrent(e, 150n, t0 + 900, interval)).toBe(false); // new HYPE after the interval
+      expect(emptySnapshotStillCurrent(e, 100n, t0 + 900, interval)).toBe(true); // nothing new
+      expect(emptySnapshotStillCurrent(e, 100n, t0 + 21_599, interval)).toBe(true);
+      expect(emptySnapshotStillCurrent(e, 100n, t0 + 21_600, interval)).toBe(false); // balances may have moved
+      expect(emptySnapshotStillCurrent(e, 100n, t0 - 1, interval)).toBe(false); // clock went backwards
+    });
+    const empty = () => feePool({ creatorBps: 5_000, unallocated: 20_000_000n, nextEpoch: 1n, lastSnapshotSlot: 4_000n });
+    const store = (initial?: { at: number; unallocated: string }) => {
+      let value = initial;
+      return { get: () => value, set: (_m: string, v: { at: number; unallocated: string } | null) => { value = v ?? undefined; }, read: () => value };
+    };
+    const run = (k: Parameters<typeof runHolderPayouts>[0]) => runHolderPayouts(k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() });
+    const counted = (k: Parameters<typeof runHolderPayouts>[0], seconds: number) => {
+      const c = k.connection as unknown as { getBlockTime: () => Promise<number>; getProgramAccounts: (...a: unknown[]) => Promise<unknown> };
+      const original = c.getProgramAccounts.bind(c);
+      const counter = { snapshots: 0 };
+      c.getProgramAccounts = (...a: unknown[]) => { counter.snapshots++; return original(...a); };
+      c.getBlockTime = async () => t0 - 10_000;
+      k.payoutIntervalSeconds = interval; k.now = () => seconds;
+      return counter;
+    };
+    it("skip the holder read and report carrying when nothing has changed", async () => {
+      const { k, sent } = harness(empty());
+      const c = counted(k, t0 + 60);
+      k.emptySnapshots = store({ at: t0, unallocated: "20000000" });
+      expect(await run(k)).toMatchObject({ payouts: 0, skipped: expect.stringMatching(/carry over/) });
+      expect(c.snapshots).toBe(0);
+      expect(sent).toEqual([]);
+    });
+    it("snapshot again once new HYPE arrives and the interval has passed", async () => {
+      const { k } = harness(empty());
+      const c = counted(k, t0 + 900);
+      k.emptySnapshots = store({ at: t0, unallocated: "19000000" });
+      await run(k).catch(() => undefined);
+      expect(c.snapshots).toBe(1);
+    });
+    it("never records anything on a dry run, and forgets on a funded round", async () => {
+      const dry = harness(empty());
+      counted(dry.k, t0);
+      dry.k.dryRun = true;
+      const s1 = store();
+      dry.k.emptySnapshots = s1;
+      await run(dry.k).catch(() => undefined);
+      expect(s1.read()).toBeUndefined();
+      const paid = harness(feePool({ creatorBps: 5_000, unallocated: 36_000_000_000n, nextEpoch: 1n, lastSnapshotSlot: 4_000n }));
+      counted(paid.k, t0 + 900);
+      const s2 = store({ at: t0, unallocated: "1" });
+      paid.k.emptySnapshots = s2;
+      await run(paid.k);
+      expect(s2.read()).toBeUndefined();
+    });
+  });
+
+  it("never pays early when the last snapshot's time cannot be read", async () => {
+    const pool = feePool({ creatorBps: 5_000, unallocated: 36_000_000_000n, nextEpoch: 1n, lastSnapshotSlot: 4_000n });
+    for (const read of [async () => null, async () => { throw Error("rpc down"); }]) {
+      const { k, sent } = harness(pool);
+      k.payoutIntervalSeconds = 900;
+      (k.connection as unknown as { getBlockTime: () => Promise<number | null> }).getBlockTime = read;
+      expect(await runHolderPayouts(k, { mint: mint.toBase58(), dbcPool: Keypair.generate().publicKey.toBase58() })).toMatchObject({ skipped: expect.stringMatching(/time unavailable/) });
+      expect(sent).toEqual([]);
+    }
   });
 
   it("never funds an epoch the keeper cannot afford to pay out and close", async () => {

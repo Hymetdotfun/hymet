@@ -1,5 +1,5 @@
 export const HOLDER_PAYOUT_POLICY: Readonly<{
-  intervalHours: number;
+  intervalMinutes: number;
   chunkSize: number;
   maxChunks: number;
   expirySlots: bigint;

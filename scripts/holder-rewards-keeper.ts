@@ -3,7 +3,8 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs scripts/holder-rewards-keeper.ts          # dry run: plan + simulate only
 //   node node_modules/jiti/lib/jiti-cli.mjs scripts/holder-rewards-keeper.ts --send   # broadcast (Mainnet needs every gate)
 //   --min-payout=<HYPE base units>  lowers both payout minimums (small-amount verification runs only)
-//   --payout-interval-hours=<n>     minimum time between holder snapshots per token (default 24; 0 = every run)
+//   --payout-interval-minutes=<n>   minimum real time between holder payouts per token, from block timestamps (default 15; 0 = every run)
+//   --payout-interval-hours=<n>     the same in hours, for existing test tooling
 // Env: DATABASE_URL, HYMET_DISTRIBUTOR_PROGRAM_ID, HYMET_KEEPER_KEYPAIR (snapshot authority JSON),
 //      MAINNET_RPC_URL (or HYMET_KEEPER_RPC_URL for a local validator / Devnet).
 //      HYMET_KEEPER_MINTS (optional, comma-separated): only these mints, e.g. an instant-graduation run from
@@ -13,22 +14,36 @@
 // The keypair is read from disk and never printed.
 import { spawn } from "node:child_process";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import pg from "pg";
 import { Connection, Keypair, PublicKey, type Transaction } from "@solana/web3.js";
 import { MAINNET_GENESIS, assertMainnetTransactionsEnabled } from "../lib/app-network";
 import { holderPayoutsLive } from "../lib/launch-mode";
 import { awaitSignature, configuredPlatformFeeRecipient } from "../lib/transactions";
 import { verifyDistributorDeployment } from "../lib/distributor-engine";
-import { runHolderPayouts } from "../lib/holder-keeper";
+import { runHolderPayouts, type EmptySnapshot, type EmptySnapshotStore } from "../lib/holder-keeper";
 import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
 import { KEEPER_PRIORITY_MICROLAMPORTS, describeSendFailure, keeperFetch, withPriorityFee } from "../lib/keeper-rpc";
 
 const RPC_TIMEOUT_MS = 30_000, REINDEX_TIMEOUT_MS = 180_000;
-/** Nominal 400 ms slots: 9,000 per hour. */
-const SLOTS_PER_HOUR = 9_000n;
 
 type MintError = { mint: string; error: string };
+/** Empty-snapshot memory beside the status file. Unreadable or unwritable only costs an extra snapshot. */
+function emptySnapshotFile(): EmptySnapshotStore | undefined {
+  const status = process.env.HYMET_KEEPER_STATUS_FILE;
+  if (!status) return undefined;
+  const file = join(dirname(status), "empty-snapshots.json");
+  let saved: Record<string, EmptySnapshot> = {};
+  try { saved = JSON.parse(readFileSync(file, "utf8")); } catch { /* first run */ }
+  return {
+    get: (mint) => saved[mint],
+    set: (mint, value) => {
+      if (value) saved[mint] = value; else delete saved[mint];
+      try { writeFileSync(`${file}.tmp`, JSON.stringify(saved)); renameSync(`${file}.tmp`, file); } catch { /* only costs a snapshot */ }
+    },
+  };
+}
 function writeStatus(status: { ok: boolean; tokens: number; errors: unknown[]; settlementErrors?: MintError[]; migrationErrors?: MintError[]; carrying?: string[] }) {
   const file = process.env.HYMET_KEEPER_STATUS_FILE;
   if (!file) return;
@@ -58,7 +73,9 @@ async function main() {
   const policy = minArg ? { ...HOLDER_PAYOUT_POLICY, minPayout: BigInt(minArg), minPayoutNewAccount: BigInt(minArg) } : HOLDER_PAYOUT_POLICY;
   const intervalArg = process.argv.find((a) => a.startsWith("--payout-interval-hours="))?.slice("--payout-interval-hours=".length);
   if (intervalArg !== undefined && !/^\d{1,3}$/.test(intervalArg)) throw Error("--payout-interval-hours must be a whole number of hours");
-  const payoutIntervalSlots = BigInt(intervalArg ?? HOLDER_PAYOUT_POLICY.intervalHours) * SLOTS_PER_HOUR;
+  const minutesArg = process.argv.find((a) => a.startsWith("--payout-interval-minutes="))?.slice("--payout-interval-minutes=".length);
+  if (minutesArg !== undefined && !/^\d{1,5}$/.test(minutesArg)) throw Error("--payout-interval-minutes must be a whole number of minutes");
+  const payoutIntervalSeconds = minutesArg !== undefined ? Number(minutesArg) * 60 : intervalArg !== undefined ? Number(intervalArg) * 3600 : HOLDER_PAYOUT_POLICY.intervalMinutes * 60;
   const feeText = process.env.HYMET_KEEPER_PRIORITY_MICROLAMPORTS;
   if (feeText !== undefined && !/^\d{1,9}$/.test(feeText)) throw Error("HYMET_KEEPER_PRIORITY_MICROLAMPORTS must be a non-negative integer");
   const priorityFee = feeText === undefined ? KEEPER_PRIORITY_MICROLAMPORTS : Number(feeText);
@@ -90,6 +107,7 @@ async function main() {
       "SELECT t.mint_address,p.pool_address FROM tokens t JOIN pools p USING(mint_address) WHERE t.distributor_program_id=$1 AND t.holder_share_of_remaining_bps>0 AND p.protocol='meteora_dbc' AND ($2::text[] IS NULL OR t.mint_address=ANY($2)) ORDER BY t.created_at",
       [program.toBase58(), onlyMints],
     )).rows;
+    const emptySnapshots = emptySnapshotFile();
     const errors: unknown[] = [], settlementErrors: MintError[] = [], migrationErrors: MintError[] = [], carrying: string[] = [];
     const simulate = async (tx: Transaction, label: string, extraSigners: Keypair[] = []) => {
       tx.feePayer = authority.publicKey;
@@ -130,7 +148,7 @@ async function main() {
       log("migration check", migration);
       if ("error" in migration) migrationErrors.push({ mint: String(t.mint_address), error: String(migration.error).slice(0, 300) });
       const result = await runHolderPayouts({
-        connection, program, platform, authority, db, log, dryRun: !send, policy, payoutIntervalSlots,
+        connection, program, platform, authority, db, log, dryRun: !send, policy, payoutIntervalSeconds, emptySnapshots,
         onSettlementError: (mint: string, error: string) => settlementErrors.push({ mint, error: error.slice(0, 300) }),
         simulate,
         send: async (tx: Transaction, label: string) => sendTx(tx, label),
