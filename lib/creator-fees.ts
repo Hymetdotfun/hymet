@@ -37,6 +37,7 @@ import {
   estimateMessageFee,
   WALLET_PRIORITY_MICROLAMPORTS,
 } from "./transactions";
+import { verifyWalletMessage } from "./wallet-guards";
 
 export type FeeView = Awaited<ReturnType<typeof readCreatorFees>>;
 export function tokenAmount(amount: bigint, decimals: number) {
@@ -387,14 +388,17 @@ export async function signCreatorClaim(
   );
   const message = Buffer.from(signed.serializeMessage()).toString("base64");
   const reviewed = Message.from(Buffer.from(plan.message, "base64"));
-  const changed = message !== plan.message;
+  // Same rule as executeWalletOperation: byte-identical, or only added Lighthouse assertions.
+  const check = verifyWalletMessage(Buffer.from(plan.message, "base64"), Buffer.from(message, "base64"));
+  const changed = !check.ok;
   const actual = signed.compileMessage();
   const missingSignatures = signed.signatures.filter(
     (s) => !s.signature,
   ).length;
   const signaturesValid = missingSignatures === 0 && signed.verifySignatures();
   console.info("[CreatorFees claim-signing-v3] after-wallet", {
-    messageUnchanged: !changed,
+    messageUnchanged: message === plan.message,
+    walletGuards: check.ok ? check.guards : null,
     blockhashUnchanged: signed.recentBlockhash === reviewed.recentBlockhash,
     feePayerUnchanged: actual.accountKeys[0].equals(reviewed.accountKeys[0]),
     instructionCountUnchanged:
@@ -426,7 +430,7 @@ export async function signCreatorClaim(
         : "",
     ]
       .filter(Boolean)
-      .join(", ") || "instructions, account ordering or message fields";
+      .join(", ") || (check.ok ? "" : check.reason);
   const r: ClaimRecord = {
     network: plan.view.network,
     wallet: plan.wallet,

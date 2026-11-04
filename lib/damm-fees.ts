@@ -50,6 +50,7 @@ import {
   estimateMessageFee,
   WALLET_PRIORITY_MICROLAMPORTS,
 } from "./transactions";
+import { verifyWalletMessage } from "./wallet-guards";
 import { assertMainnetTransactionsEnabled } from "./app-network";
 type Store = Pick<Storage, "getItem" | "setItem">;
 export type DammPosition = {
@@ -561,8 +562,10 @@ export async function refreshDammClaim(
           "Confirmed DAMM transaction data unavailable; retain pending journal",
         );
       if (
-        Buffer.from(tx.transaction.message.serialize()).toString("base64") !==
-        r.message
+        !verifyWalletMessage(
+          Buffer.from(r.message, "base64"),
+          tx.transaction.message.serialize(),
+        ).ok
       )
         throw Error(
           "Confirmed message differs from DAMM review; inspect saved signature",

@@ -124,7 +124,7 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker, tokenSta
     if (!plan || !publicKey || !signTransaction) return;
     setBusy(true); setError(""); setStatus("Approve the transaction in Phantom…");
     try {
-      const sig = await executeWalletOperation(connection, plan.tx, publicKey, signTransaction, window.localStorage, plan.lastValidBlockHeight, undefined, SWAP_JOURNAL);
+      const sig = await executeWalletOperation(connection, plan.tx, publicKey, signTransaction, window.localStorage, plan.lastValidBlockHeight, undefined, SWAP_JOURNAL, { allowWalletGuards: true });
       setSignature(sig); setPlan(null); setStatus(`Swap confirmed on ${activeNetworkLabel("Mainnet")}.`); void refreshBalances();
       // A confirmed DBC buy may have completed the curve: start migration at once instead of waiting for the keeper.
       if (!damm && side === "buy") void checkGraduation(mint).then((g) => { if (g?.status === "graduating" || g?.status === "graduated") setMigrating(true); });

@@ -87,7 +87,7 @@ function FeeLedgerWallet() {
       if(!response.ok) throw Error(data.error || 'Fee transaction unavailable');
       const transaction=Transaction.from(Buffer.from(data.transaction,'base64'));
       if(!transaction.feePayer?.equals(publicKey)) throw Error('Transaction wallet mismatch');
-      const signature=await executeWalletOperation(connection,transaction,publicKey,signTransaction,localStorage,data.lastValidBlockHeight);
+      const signature=await executeWalletOperation(connection,transaction,publicKey,signTransaction,localStorage,data.lastValidBlockHeight,undefined,undefined,{allowWalletGuards:true});
       setClaimMessage(`Confirmed creator claim · ${signature}. Indexed totals update after confirmed-chain indexing.`);
       await load();
     } catch(error) {setClaimMessage(error instanceof Error?error.message:'Transaction failed');}

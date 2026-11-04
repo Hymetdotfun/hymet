@@ -230,6 +230,9 @@ function PlatformFeeClaimsWallet() {
         signTransaction,
         window.localStorage,
         data.lastValidBlockHeight,
+        undefined,
+        undefined,
+        { allowWalletGuards: true },
       );
       setSignature(result);
       setStatus("Claim transaction confirmed.");

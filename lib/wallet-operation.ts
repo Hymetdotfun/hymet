@@ -3,6 +3,7 @@ import bs58 from 'bs58';
 import { ComputeBudgetProgram, Connection, Message, PublicKey, Transaction } from '@solana/web3.js';
 import { awaitSignature, simulateReviewedTransaction } from './transactions';
 import { expectedGenesis, assertMainnetTransactionsEnabled } from './app-network';
+import { verifyWalletMessage } from './wallet-guards';
 type Store=Pick<Storage,'getItem'|'setItem'>;
 /** Human-readable summary of how a wallet altered a reviewed message (diagnostics only; the byte comparison decides). */
 export function messageChanges(reviewed:Buffer,signed:Transaction) {
@@ -21,7 +22,7 @@ export function messageChanges(reviewed:Buffer,signed:Transaction) {
 // outcome distinguishes an on-chain failure from an expired (never landed) transaction; phase values are unchanged for existing readers.
 type RecordState={phase:'awaiting-signature'|'signed'|'confirmed'|'failed';signature?:string;lastValidBlockHeight:number;outcome?:'failed'|'expired'};
 /** Public transaction journal only. Never stores keys or retries ambiguous broadcasts. */
-export async function executeWalletOperation(c:Connection,tx:Transaction,wallet:PublicKey,sign:(tx:Transaction)=>Promise<Transaction>,storage:Store,lastValidBlockHeight:number,confirmation?:Parameters<typeof awaitSignature>[3],journal='fee-operation') {
+export async function executeWalletOperation(c:Connection,tx:Transaction,wallet:PublicKey,sign:(tx:Transaction)=>Promise<Transaction>,storage:Store,lastValidBlockHeight:number,confirmation?:Parameters<typeof awaitSignature>[3],journal='fee-operation',{allowWalletGuards=false}:{allowWalletGuards?:boolean}={}) {
   assertMainnetTransactionsEnabled();
   if(await c.getGenesisHash()!==expectedGenesis()) throw Error('Wallet RPC is not the active network');
   if(!tx.feePayer?.equals(wallet) || !tx.recentBlockhash) throw Error('Transaction wallet or blockhash mismatch');
@@ -45,12 +46,15 @@ export async function executeWalletOperation(c:Connection,tx:Transaction,wallet:
     if((error as {code?:number}).code===4001) storage.setItem(key,JSON.stringify({...record,phase:'failed'}));
     throw error;
   }
-  if(!message.equals(signed.serializeMessage())) {
+  const signedMessage=Buffer.from(signed.serializeMessage());
+  // Byte-identical, or (for callers that opt in, on a transaction nobody else has signed) only added Lighthouse assertions.
+  const check=!message.equals(signedMessage)&&allowWalletGuards&&temporary.length===0?verifyWalletMessage(message,signedMessage):null;
+  if(!message.equals(signedMessage)&&!check?.ok) {
     // Never sent from here, but Phantom's altered copy may carry a valid signature: journal it so a retry first checks
     // its on-chain status and waits for blockhash expiry instead of risking a second, overlapping operation.
     const altered=signed.signature?bs58.encode(signed.signature):undefined;
     storage.setItem(key,JSON.stringify(altered?{...record,phase:'signed',signature:altered}:{...record,phase:'failed'}));
-    throw Error(`Phantom changed the reviewed transaction message (${messageChanges(message,signed)}); nothing was sent${altered?` · its signature ${altered} is checked on-chain before any retry`:''}`);
+    throw Error(`Phantom changed the reviewed transaction message (${messageChanges(message,signed)}${check&&!check.ok?`: ${check.reason}`:''}); nothing was sent${altered?` · its signature ${altered} is checked on-chain before any retry`:''}`);
   }
   for(const signer of temporary) {
     const current=signed.signatures.find(s=>s.publicKey.equals(signer.publicKey));

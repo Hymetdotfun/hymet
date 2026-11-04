@@ -1,3 +1,5 @@
+import { TransactionInstruction } from "@solana/web3.js";
+import { LIGHTHOUSE_PROGRAM_ID } from "../lib/wallet-guards";
 import { HYPE_MINT } from "../lib/quote-assets";
 import { deriveDbcPoolAddress } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { NATIVE_MINT, getAssociatedTokenAddressSync } from "@solana/spl-token";
@@ -445,6 +447,24 @@ it("retains ambiguous broadcast signatures and prevents retry; recovery checks s
   vi.mocked(x.c.getBlockHeight).mockResolvedValue(101);
   expect((await refreshDammClaim(x.c, x.s, r)).record.state).toBe("expired");
   expect(x.send).toHaveBeenCalledTimes(1);
+});
+it("sends a position claim Phantom only added a Lighthouse assertion to", async () => {
+  const x = await setup(),
+    plan = await prepareDammClaim(
+      x.c,
+      "devnet",
+      x.dbcPool,
+      x.position.toBase58(),
+      x.wallet.publicKey,
+    );
+  const guarded = async (tx: Transaction) => {
+    tx.instructions.push(new TransactionInstruction({ programId: LIGHTHOUSE_PROGRAM_ID, keys: [], data: Buffer.from([9]) }));
+    tx.partialSign(x.wallet);
+    return tx;
+  };
+  await executeDammClaim(x.c, plan, x.wallet.publicKey, guarded, x.s).catch(() => undefined);
+  expect(x.send).toHaveBeenCalledTimes(1);
+  expect(dammRecord(x.s, "devnet", x.wallet.publicKey.toBase58())?.signingIssue).toBeUndefined();
 });
 it("refuses modified wallet messages and retains their valid signature for inspection without broadcasting", async () => {
   const x = await setup(),

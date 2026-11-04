@@ -1,3 +1,5 @@
+import { TransactionInstruction } from "@solana/web3.js";
+import { LIGHTHOUSE_PROGRAM_ID } from "../lib/wallet-guards";
 import { HYPE_MINT } from "../lib/quote-assets";
 import {
   deriveDbcPoolAddress,
@@ -849,4 +851,30 @@ it("constructs a HYPE creator fee claim to the creator HYPE ATA without WSOL clo
     claims[0].keys.some((k) => k.pubkey.toBase58() === plan.destinations[1]),
   ).toBe(true);
   expect(x.send).not.toHaveBeenCalled();
+});
+
+it("sends a claim Phantom only added a Lighthouse assertion to, and records the reviewed fee", async () => {
+  const { c, state, update, send } = setup(),
+    wallet = Keypair.generate(),
+    s = store();
+  state.poolState.creator = wallet.publicKey;
+  await update();
+  const plan = await prepareCreatorClaim(c, "devnet", pool, wallet.publicKey);
+  await expect(
+    executeCreatorClaim(
+      c,
+      plan,
+      wallet.publicKey,
+      async (tx) => {
+        tx.instructions.push(new TransactionInstruction({ programId: LIGHTHOUSE_PROGRAM_ID, keys: [], data: Buffer.from([9]) }));
+        tx.partialSign(wallet);
+        return tx;
+      },
+      s,
+    ),
+  ).rejects.toThrow("ambiguous");
+  expect(send).toHaveBeenCalledTimes(1);
+  const r = claimRecord(s, "devnet", wallet.publicKey.toBase58())!;
+  expect(r.signingIssue).toBeUndefined();
+  expect(r.signedFee).toBe("5000");
 });
