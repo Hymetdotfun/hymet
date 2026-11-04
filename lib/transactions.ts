@@ -544,6 +544,9 @@ export function remainingRequirement(p: Plan) {
  *  estimate shown before signing includes it. */
 export const LAUNCH_COMPUTE_UNITS = 1_000_000;
 export const LAUNCH_PRIORITY_MICROLAMPORTS = 20_000;
+/** The same explicit price for swaps and fee claims: a price of 0 is not treated as set. At 300,000-400,000 units it adds
+ *  at most 6,000-8,000 lamports, included in the fee shown before signing. */
+export const WALLET_PRIORITY_MICROLAMPORTS = 20_000;
 export async function signReviewedTransaction(
   tx: Transaction,
   payer: PublicKey,

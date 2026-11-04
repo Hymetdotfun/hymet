@@ -541,7 +541,7 @@ it("explicitly fixes the reviewed compute-unit price at zero", async () => {
   expect(
     ComputeBudgetInstruction.decodeSetComputeUnitPrice(plan.tx.instructions[1])
       .microLamports,
-  ).toBe(0n);
+  ).toBe(20000n);
 });
 it("accepts a serialized Phantom-style signed return and checks the exact fee before sending", async () => {
   const { c, state, update, send } = setup(),

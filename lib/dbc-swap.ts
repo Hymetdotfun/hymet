@@ -7,7 +7,7 @@ import BN from "bn.js";
 import { HYPE_MINT } from "./quote-assets";
 import { distributorConfigError, nativeSplitConfigError } from "./platform-fees";
 import { acceptedPlatformFeeRecipients } from "./platform-wallets";
-import { assertSigners, checkNetwork, estimateMessageFee, simulateReviewedTransaction } from "./transactions";
+import { WALLET_PRIORITY_MICROLAMPORTS, assertSigners, checkNetwork, estimateMessageFee, simulateReviewedTransaction } from "./transactions";
 import { units } from "./config";
 
 export type SwapSide = "buy" | "sell";
@@ -126,7 +126,7 @@ export async function prepareDbcSwap(
     ? await sdk.pool.swap({ owner: p.wallet, pool, amountIn: new BN(amountIn.toString()), minimumAmountOut: new BN(minimumOut.toString()), swapBaseForQuote: true, referralTokenAccount: null })
     : await sdk.pool.swap2({ owner: p.wallet, pool, swapMode: SwapMode.PartialFill, amountIn: new BN(amountIn.toString()), minimumAmountOut: new BN(minimumOut.toString()), swapBaseForQuote: false, referralTokenAccount: null });
   if (!tx.instructions.some((ix) => ix.programId.equals(ComputeBudgetProgram.programId)))
-    tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 }));
+    tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: WALLET_PRIORITY_MICROLAMPORTS }));
   const block = await c.getLatestBlockhash("confirmed");
   tx.feePayer = p.wallet;
   tx.recentBlockhash = block.blockhash;

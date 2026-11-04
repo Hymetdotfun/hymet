@@ -8,7 +8,7 @@ import BN from "bn.js";
 import { HYPE_MINT } from "./quote-assets";
 import { readMigration } from "./migration";
 import { MAX_SLIPPAGE_BPS, chainClock, hymetDbcLaunch, splDecimals, tokenBalance, type SwapPlan, type SwapSide } from "./dbc-swap";
-import { assertSigners, checkNetwork, estimateMessageFee, simulateReviewedTransaction } from "./transactions";
+import { WALLET_PRIORITY_MICROLAMPORTS, assertSigners, checkNetwork, estimateMessageFee, simulateReviewedTransaction } from "./transactions";
 import { units } from "./config";
 
 const COLLECT_FEE_ONLY_B = 1;
@@ -80,7 +80,7 @@ export async function prepareDammSwap(
     tokenAProgram: TOKEN_PROGRAM_ID, tokenBProgram: TOKEN_PROGRAM_ID, referralTokenAccount: null, poolState: pool,
   });
   if (!tx.instructions.some((ix) => ix.programId.equals(ComputeBudgetProgram.programId)))
-    tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 }));
+    tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: WALLET_PRIORITY_MICROLAMPORTS }));
   const block = await c.getLatestBlockhash("confirmed");
   tx.feePayer = p.wallet;
   tx.recentBlockhash = block.blockhash;

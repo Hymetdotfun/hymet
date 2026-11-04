@@ -35,6 +35,7 @@ import {
   pollConfirmation,
   type Network,
   estimateMessageFee,
+  WALLET_PRIORITY_MICROLAMPORTS,
 } from "./transactions";
 
 export type FeeView = Awaited<ReturnType<typeof readCreatorFees>>;
@@ -268,7 +269,7 @@ export async function prepareCreatorClaim(
   });
   tx.instructions.unshift(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: WALLET_PRIORITY_MICROLAMPORTS }),
   );
   const block = await c.getLatestBlockhash("confirmed");
   tx.feePayer = wallet;

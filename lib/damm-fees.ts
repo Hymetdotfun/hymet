@@ -48,6 +48,7 @@ import {
   pollConfirmation,
   type Network,
   estimateMessageFee,
+  WALLET_PRIORITY_MICROLAMPORTS,
 } from "./transactions";
 import { assertMainnetTransactionsEnabled } from "./app-network";
 type Store = Pick<Storage, "getItem" | "setItem">;
@@ -327,7 +328,7 @@ export function protectDammInstructions(
     closed = 0;
   const budgets = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: WALLET_PRIORITY_MICROLAMPORTS }),
   ];
   for (const [i, ix] of tx.instructions.entries()) {
     if (i < 2) {
@@ -430,7 +431,7 @@ export async function prepareDammClaim(
   });
   tx.instructions.unshift(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: WALLET_PRIORITY_MICROLAMPORTS }),
   );
   const block = await c.getLatestBlockhash("confirmed");
   tx.feePayer = wallet;

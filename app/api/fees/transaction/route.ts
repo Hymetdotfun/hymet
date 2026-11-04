@@ -6,7 +6,7 @@ import { query } from '../../../../lib/db';
 import { sameOrigin, limitedBody } from '../../../../lib/http';
 import { HYPE_MINT } from '../../../../lib/quote-assets';
 import { expectedGenesis, serverRpcUrl } from '../../../../lib/app-network';
-import { configuredPlatformFeeRecipient } from '../../../../lib/transactions';
+import { WALLET_PRIORITY_MICROLAMPORTS, configuredPlatformFeeRecipient } from '../../../../lib/transactions';
 import { distributorAllowed } from '../../../../lib/launch-mode';
 import { creatorDistributorClaim, verifyConfiguredDistributorAuthorities, verifyDistributorDeployment, verifyDistributorPool } from '../../../../lib/distributor-engine';
 export const runtime='nodejs';
@@ -38,11 +38,11 @@ export async function POST(request:NextRequest) {
     const config=await sdk.state.getPoolConfig(pool.poolState.config);
     if(!config || !config.quoteMint.equals(HYPE_MINT) || !config.feeClaimer.equals(a.feePool)) throw Error('DBC distributor binding differs from launch');
     if(!wallet.equals(creator)) throw Error('Only the creator can claim creator fees');
-    // An explicit compute-unit price (0, as in swaps) keeps Phantom from inserting its own priority-fee instruction,
+    // An explicit compute-unit price (as in swaps) keeps Phantom from inserting its own priority-fee instruction,
     // which would change the reviewed message that executeWalletOperation requires Phantom to sign unchanged.
     tx.add(
       ComputeBudgetProgram.setComputeUnitLimit({units:200_000}),
-      ComputeBudgetProgram.setComputeUnitPrice({microLamports:0}),
+      ComputeBudgetProgram.setComputeUnitPrice({microLamports:WALLET_PRIORITY_MICROLAMPORTS}),
       createAssociatedTokenAccountIdempotentInstruction(wallet,getAssociatedTokenAddressSync(HYPE_MINT,wallet),wallet,HYPE_MINT),
       creatorDistributorClaim(program,mint,wallet),
     );

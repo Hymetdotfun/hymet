@@ -14,7 +14,7 @@ import BN from "bn.js";
 import { HYPE_MINT } from "./quote-assets";
 import { NATIVE_SPLIT } from "./launch-mode";
 import { distributorAddresses } from "./distributor-engine";
-import { assertSigners, checkNetwork, estimateMessageFee, type Network } from "./transactions";
+import { WALLET_PRIORITY_MICROLAMPORTS, assertSigners, checkNetwork, estimateMessageFee, type Network } from "./transactions";
 
 export type PlatformFeeView = {
   pool: string;
@@ -111,7 +111,7 @@ export async function preparePlatformClaim(c: Connection, network: Network, addr
   });
   tx.instructions.unshift(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 0 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: WALLET_PRIORITY_MICROLAMPORTS }),
   );
   const block = await c.getLatestBlockhash("confirmed");
   tx.feePayer = platform;
