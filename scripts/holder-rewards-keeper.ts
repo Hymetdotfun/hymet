@@ -22,7 +22,7 @@ import { verifyDistributorDeployment } from "../lib/distributor-engine";
 import { runHolderPayouts } from "../lib/holder-keeper";
 import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
-import { KEEPER_PRIORITY_MICROLAMPORTS, keeperFetch, withPriorityFee } from "../lib/keeper-rpc";
+import { KEEPER_PRIORITY_MICROLAMPORTS, describeSendFailure, keeperFetch, withPriorityFee } from "../lib/keeper-rpc";
 
 const RPC_TIMEOUT_MS = 30_000, REINDEX_TIMEOUT_MS = 180_000;
 /** Nominal 400 ms slots: 9,000 per hour. */
@@ -107,7 +107,12 @@ async function main() {
       tx.recentBlockhash = block.blockhash;
       tx.sign(authority, ...extraSigners);
       const raw = tx.serialize();
-      const signature = await connection.sendRawTransaction(raw, { preflightCommitment: "confirmed", maxRetries: 0 });
+      let signature: string;
+      try {
+        signature = await connection.sendRawTransaction(raw, { preflightCommitment: "confirmed", maxRetries: 0 });
+      } catch (error) {
+        throw Error(await describeSendFailure(error, connection, label));
+      }
       const outcome = await awaitSignature(connection, signature, block.lastValidBlockHeight, {
         rebroadcast: () => connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }),
       });

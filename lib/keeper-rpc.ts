@@ -1,5 +1,16 @@
 import { ComputeBudgetProgram, type Transaction } from "@solana/web3.js";
 
+/** A failed send's message with its logs and RPC error. The default "Simulation failed" text alone hides the cause. */
+export async function describeSendFailure(error: unknown, connection: unknown, label: string) {
+  const e = error as { message?: unknown; transactionError?: { message?: unknown }; getLogs?: (c: unknown) => Promise<string[] | null> };
+  const logs = await Promise.resolve(e.getLogs?.(connection)).catch(() => null);
+  const detail = [
+    e.transactionError?.message ? `rpc: ${String(e.transactionError.message)}` : "",
+    logs?.length ? `logs: ${logs.slice(-4).join(" | ")}` : "",
+  ].filter(Boolean).join("; ");
+  return `${label} send failed: ${String(e.message ?? error).split("\n")[0]}${detail ? `; ${detail}` : ""}`.slice(0, 600);
+}
+
 /** Default keeper priority fee: 400k CU (a settlement) costs 8,000 lamports on top of the base fee. */
 export const KEEPER_PRIORITY_MICROLAMPORTS = 20_000;
 

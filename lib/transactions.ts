@@ -487,6 +487,7 @@ export async function buildPlan(
     (await rentFor(82)) +
     (await rentFor(1024)) +
     2n * (await rentFor(165));
+  rent += METAPLEX_CREATE_FEE_LAMPORTS;
   if (buy > 0n) rent += (quote.native ? 2n : 1n) * (await rentFor(165));
   if (distributorProgram) rent += (await rentFor(195)) + 2n * (await rentFor(165));
   const rawBalance = await c.getBalance(creator);
@@ -543,6 +544,9 @@ export function remainingRequirement(p: Plan) {
  *  exactly as reviewed. 20,000 micro-lamports x 1,000,000 units adds at most 20,000 lamports per launch step; the fee
  *  estimate shown before signing includes it. */
 export const LAUNCH_COMPUTE_UNITS = 1_000_000;
+/** Paid to the metadata account on creation, on top of its rent (measured on Mainnet). The estimate keeps 1,024 bytes of
+ *  metadata rent as headroom, so it runs slightly above the actual cost, never below it. */
+export const METAPLEX_CREATE_FEE_LAMPORTS = 10_000_000n;
 export const LAUNCH_PRIORITY_MICROLAMPORTS = 20_000;
 /** The same explicit price for swaps and fee claims: a price of 0 is not treated as set. At 300,000-400,000 units it adds
  *  at most 6,000-8,000 lamports, included in the fee shown before signing. */

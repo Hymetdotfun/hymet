@@ -94,7 +94,7 @@ HYMET runs in two modes:
 | Mode | Status | How the 80% is handled |
 |---|---|---|
 | **Native split** | Active | Meteora pays HYMET (20%) and the creator (80%) directly; after graduation each owns a permanently locked LP position |
-| **Distributor** | Program deployed and initialized; launches gated pending final verification | All fees go to the HYMET distributor program, which pays HYMET 20%, lets the creator claim their share and pushes the holders' share to holders on a 24-hour cycle |
+| **Distributor** | Deployed and initialized; verified in private Mainnet testing; public launches not yet open | All fees go to the HYMET distributor program, which pays HYMET 20%, lets the creator claim their share and pushes the holders' share to holders on a 24-hour cycle |
 
 The distributor holds no keys of its own: its fee pool is a program-derived address that can only claim Meteora fees
 and pay them out by the fixed rules. See [Distributor program](docs/DISTRIBUTOR.md).
@@ -140,7 +140,8 @@ flowchart TB
 ```
 
 - **The app never holds user keys.** The server builds and simulates unsigned transactions; Phantom signs; the app
-  checks that the signed message is byte-for-byte the one you reviewed before it is sent.
+  checks the signed message against the one you reviewed before it is sent. It must be byte-for-byte identical, except
+  that swaps and fee claims accept Lighthouse assertions added by Phantom; every reviewed instruction must stay unchanged.
 - **The keeper holds one narrow key**: the distributor's snapshot authority. It can fund holder payout rounds from
   fees already collected for holders, and nothing else. See [Keeper](docs/KEEPER.md).
 
@@ -225,6 +226,14 @@ problems.
 
 The distributor program has had an internal security review and a reproducible build. It has **not** had an external
 audit. Trading launched tokens carries market risk; nothing here is financial advice.
+
+### What has been verified on Mainnet
+
+| Flow | Evidence |
+|---|---|
+| Launch with a creator/holder split and first buy, DBC settlement, automatic holder payout, creator claim, and a sell through Phantom | Private Mainnet test |
+| Graduation to DAMM v2, DAMM v2 trading and settlement | **Devnet and local validator only**, at a 1% fee. Not yet run on Mainnet, and no other fee rate has graduated |
+| Buying through the app and native-split creator and platform claims through Phantom | Not yet tested on Mainnet |
 
 ## License
 

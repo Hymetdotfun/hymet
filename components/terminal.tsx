@@ -715,7 +715,7 @@ function Launcher() {
                     <small className="allocation-note">
                       {holderSplitsEnabled
                         ? `HYMET's fixed 20% platform share stays unchanged. This slider splits the remaining 80%.${mainnetPayoutVerified ? "" : " Holder payouts are configured; no Mainnet payout has been verified yet."}`
-                        : `HYMET's fixed 20% platform share stays unchanged. Holder splits are unavailable under the current server readiness policy. Current allocation: ${creatorShareNumber ?? "—"}% creator / ${holderShareNumber ?? "—"}% holders.`}
+                        : `HYMET's fixed 20% platform share stays unchanged. Holder splits aren't available right now: launches are closed, or the distributor check couldn't finish. Refresh to try again. Current allocation: ${creatorShareNumber ?? "—"}% creator / ${holderShareNumber ?? "—"}% holders.`}
                     </small>
                   </div>
                 </div>

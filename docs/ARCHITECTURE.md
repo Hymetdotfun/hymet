@@ -56,7 +56,10 @@ Every user transaction follows the same path:
    simulates it. It never holds or sees a user key.
 2. **Review.** The page shows what the transaction does (amounts, accounts, fees) before Phantom opens.
 3. **Sign in Phantom.** The wallet returns the signed transaction.
-4. **Compare.** The app requires the signed message to be **byte-for-byte** identical to the reviewed one and every
+4. **Compare.** The app requires the signed message to be **byte-for-byte** identical to the reviewed one, except that
+   swaps and fee claims accept assertion instructions from the Lighthouse program, which Phantom may add, when every
+   reviewed instruction, account permission, fee payer, blockhash and compute setting is unchanged (`lib/wallet-guards.ts`).
+   Owner operations and transactions another key has already signed stay byte-for-byte. Every
    signature to verify. Any change (for example a wallet-inserted fee instruction) aborts before broadcast, and the
    returned signature is journaled so a retry first checks its on-chain status.
 5. **Simulate again, send once, confirm.** No automatic re-sends of an ambiguous broadcast.
