@@ -33,6 +33,7 @@ npm run dev                   # http://127.0.0.1:4173
 | `HYMET_DISTRIBUTOR_VERIFIED`, `HYMET_DISTRIBUTOR_APP_VERIFIED`, `HYMET_HOLDER_PAYOUTS_VERIFIED` | Owner sign-off gates for the distributor path |
 | `PINATA_JWT`, `IPFS_GATEWAY` | Metadata uploads |
 | `HYMET_PUBLIC_ORIGIN` | Exact public origin when served behind a reverse proxy (for example `https://hymet.fun`); unset means loopback only |
+| `HYMET_PUBLIC_TOKEN_EXCLUDED_MINTS` | Optional comma-separated mints left out of the public token directory (server-only) |
 
 Never put a private key in an environment variable. The keeper reads its key from a file (`HYMET_KEEPER_KEYPAIR`).
 

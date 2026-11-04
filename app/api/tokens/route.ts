@@ -3,7 +3,7 @@ import { Connection } from "@solana/web3.js";
 import { query, databaseConfigured } from "../../../lib/db";
 import { HYPE_MINT } from "../../../lib/quote-assets";
 import { directoryMetrics } from "../../../lib/market-data";
-import { PUBLIC_TOKEN_EXCLUDED_MINTS } from "../../../lib/public-token-exclusions";
+import { publicTokenExcludedMints } from "../../../lib/public-token-exclusions";
 import { serverRpcUrl } from "../../../lib/app-network";
 import { allocationFromBps } from "../../../lib/hymet-policy";
 import { syncGraduation } from "../../../lib/graduation";
@@ -20,7 +20,7 @@ export async function GET() {
          FROM tokens t WHERE t.quote_mint = $1 AND t.status IN ('bonding','graduating','graduated')
           AND NOT (t.mint_address = ANY($2::text[]))
         ORDER BY t.created_at DESC LIMIT 100`,
-      [HYPE_MINT.toBase58(), PUBLIC_TOKEN_EXCLUDED_MINTS],
+      [HYPE_MINT.toBase58(), publicTokenExcludedMints()],
     );
     const pools = result.rows.filter((r) => r.pool && r.protocol).map((r) => ({ mint: r.mint, pool: r.pool!, protocol: r.protocol! }));
     let metrics = new Map<string, { volume24hHype?: number; liquidityHype?: number; liquidityUsd?: number; priceHype?: number; marketCapUsd?: number; dbcMigrated?: boolean }>();

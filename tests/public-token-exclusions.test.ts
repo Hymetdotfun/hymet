@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { PublicKey } from "@solana/web3.js";
 import {
   isPublicTokenExcluded,
+  publicTokenExcludedMints,
   PUBLIC_TOKEN_EXCLUSIONS,
   PUBLIC_TOKEN_EXCLUDED_MINTS,
 } from "../lib/public-token-exclusions";
@@ -17,5 +18,13 @@ it("excludes only the verified test-token mint addresses from public listings", 
     expect(new PublicKey(mint).toBase58()).toBe(mint);
     expect(isPublicTokenExcluded(mint)).toBe(true);
   }
-  expect(isPublicTokenExcluded("11111111111111111111111111111111")).toBe(false);
+  expect(isPublicTokenExcluded("11111111111111111111111111111111", {})).toBe(false);
+});
+
+it("adds server-configured mints, ignoring malformed entries and duplicates", () => {
+  const mint = "11111111111111111111111111111111";
+  const env = { HYMET_PUBLIC_TOKEN_EXCLUDED_MINTS: ` ${mint}, not a mint ,,${PUBLIC_TOKEN_EXCLUDED_MINTS[0]},${mint}` };
+  expect(publicTokenExcludedMints(env)).toEqual([...PUBLIC_TOKEN_EXCLUDED_MINTS, mint]);
+  expect(isPublicTokenExcluded(mint, env)).toBe(true);
+  expect(publicTokenExcludedMints({})).toEqual(PUBLIC_TOKEN_EXCLUDED_MINTS);
 });

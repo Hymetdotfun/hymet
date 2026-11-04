@@ -7,6 +7,14 @@ export const PUBLIC_TOKEN_EXCLUSIONS = [
 
 export const PUBLIC_TOKEN_EXCLUDED_MINTS: string[] = PUBLIC_TOKEN_EXCLUSIONS.map(({ mint }) => mint);
 
-export function isPublicTokenExcluded(mint: string) {
-  return PUBLIC_TOKEN_EXCLUDED_MINTS.includes(mint);
+const MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/** Fixed exclusions plus HYMET_PUBLIC_TOKEN_EXCLUDED_MINTS: comma-separated, server-only, read at request time. */
+export function publicTokenExcludedMints(env: Record<string, string | undefined> = process.env): string[] {
+  const configured = (env.HYMET_PUBLIC_TOKEN_EXCLUDED_MINTS ?? "").split(",").map((mint) => mint.trim()).filter((mint) => MINT.test(mint));
+  return [...new Set([...PUBLIC_TOKEN_EXCLUDED_MINTS, ...configured])];
+}
+
+export function isPublicTokenExcluded(mint: string, env: Record<string, string | undefined> = process.env) {
+  return publicTokenExcludedMints(env).includes(mint);
 }
