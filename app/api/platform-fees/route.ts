@@ -4,7 +4,6 @@ import { getMint, TOKEN_PROGRAM_ID, unpackMint } from "@solana/spl-token";
 import { databaseConfigured, query } from "../../../lib/db";
 import { HYPE_MINT } from "../../../lib/quote-assets";
 import { configuredPlatformFeeRecipient } from "../../../lib/transactions";
-import { launchMode } from "../../../lib/launch-mode";
 import { expectedGenesis, serverRpcUrl } from "../../../lib/app-network";
 import { FEE_CLAIMER_MISMATCH, readPlatformFees, preparePlatformClaim } from "../../../lib/platform-fees";
 import { acceptedPlatformFeeRecipients, platformFeeGeneration } from "../../../lib/platform-wallets";
@@ -69,6 +68,8 @@ async function launchPools(): Promise<LaunchPool[]> {
   return result.rows;
 }
 
+// The route works per launch, not from the global launch mode: only launches with no distributor are listed or prepared
+// here, and readPlatformFees checks each one's on-chain native-split config. Distributor launches pay HYMET on settlement.
 // Each platform wallet sees only the launches whose immutable DBC feeClaimer it is: the legacy wallet keeps
 // HYTEST/DOGE/HYPAD, the current wallet every launch made after the change.
 async function inspect(connection: Connection, wallet: PublicKey, platform: PublicKey) {
@@ -198,11 +199,6 @@ export async function POST(request: NextRequest) {
     const origin = request.headers.get("origin")!;
     const platform = configuredPlatformFeeRecipient();
     const wallet = verifyPlatformFeeAuthorization(body, origin, acceptedPlatformFeeRecipients(platform));
-    if (launchMode() !== "native-split")
-      return NextResponse.json(
-        { error: "Platform wallet claims in the native-split mode are unavailable while distributor mode is selected" },
-        { status: 409, headers: { "Cache-Control": "no-store" } },
-      );
     if (!databaseConfigured())
       return NextResponse.json(
         { error: "PostgreSQL is not configured; confirmed HYMET launches cannot be enumerated" },
