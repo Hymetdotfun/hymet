@@ -45,6 +45,10 @@ export function sameOrigin(request: Request) {
     return false;
   }
 }
+/** Error text that leaves the server: an RPC URL can carry an API key. */
+export function publicError(message: string) {
+  return message.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, "<url>");
+}
 export async function limitedBody(
   request: Pick<Request, "body">,
   limit: number,

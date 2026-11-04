@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
   try {
     if (!trustedHost(req))
       return new NextResponse("Loopback or configured public host required", { status: 403 });
-    if (req.headers.get("origin") && !sameOrigin(req))
+    // Only this site's pages may spend the private RPC quota; browsers always send Origin on these POSTs.
+    if (!sameOrigin(req))
       return new NextResponse("Origin denied", { status: 403 });
     const network = req.nextUrl.searchParams.get("network") || APP_NETWORK;
     if (network !== APP_NETWORK)

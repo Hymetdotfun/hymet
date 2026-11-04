@@ -3,7 +3,7 @@ import { Connection, PublicKey, Transaction, ComputeBudgetProgram } from '@solan
 import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { query } from '../../../../lib/db';
-import { sameOrigin, limitedBody } from '../../../../lib/http';
+import { sameOrigin, limitedBody, publicError } from '../../../../lib/http';
 import { HYPE_MINT } from '../../../../lib/quote-assets';
 import { expectedGenesis, serverRpcUrl } from '../../../../lib/app-network';
 import { WALLET_PRIORITY_MICROLAMPORTS, configuredPlatformFeeRecipient } from '../../../../lib/transactions';
@@ -49,6 +49,6 @@ export async function POST(request:NextRequest) {
     const block=await connection.getLatestBlockhash('confirmed');tx.feePayer=wallet;tx.recentBlockhash=block.blockhash;
     return NextResponse.json({transaction:tx.serialize({requireAllSignatures:false}).toString('base64'),...block,action:body.action},{headers:{'Cache-Control':'no-store'}});
   } catch(error) {
-    return NextResponse.json({error:error instanceof Error?error.message:'Fee transaction construction failed'},{status:400,headers:{'Cache-Control':'no-store'}});
+    return NextResponse.json({error:error instanceof Error?publicError(error.message):'Fee transaction construction failed'},{status:400,headers:{'Cache-Control':'no-store'}});
   }
 }

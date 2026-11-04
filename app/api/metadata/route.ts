@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { limitedBody, sameOrigin } from "../../../lib/http";
+import { limitedBody, publicError, sameOrigin } from "../../../lib/http";
 import { randomUUID, createPublicKey, verify } from "node:crypto";
 import { PublicKey } from "@solana/web3.js";
 import { validate, type Inputs } from "../../../lib/config";
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
     const failedOperation = failure?.operation || operation;
     const message = failure
       ? failure.message
-      : `${operation}: ${e instanceof Error ? e.message : "metadata preparation failed"}`;
+      : `${operation}: ${e instanceof Error ? publicError(e.message) : "metadata preparation failed"}`;
     console.info("Metadata diagnostic", {
       request,
       operation: failedOperation,

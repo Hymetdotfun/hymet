@@ -4,7 +4,7 @@ import { PublicKey } from "@solana/web3.js";
 import { databasePool } from "../../../../lib/db";
 import { normalizeName, normalizeTicker } from "../../../../lib/hymet-policy";
 import { authorizedName, authorizedTicker, launchAuthorizationFresh, launchAuthorizationMessage } from "../../../../lib/launch-authorization";
-import { limitedBody, sameOrigin } from "../../../../lib/http";
+import { limitedBody, publicError, sameOrigin } from "../../../../lib/http";
 import { mainnetTransactionsEnabled } from "../../../../lib/app-network";
 export const runtime = "nodejs";
 /** Open launch records one wallet may hold; each expires after 15 minutes. Names are not reserved. */
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     if (client) await client.query("ROLLBACK").catch(() => {});
     const code = (e as { code?: string })?.code;
     if (code === "23505") return NextResponse.json({ error: "This launch request was already submitted" }, { status: 409 });
-    const message = e instanceof Error ? e.message : "Reservation failed";
+    const message = e instanceof Error ? publicError(e.message) : "Reservation failed";
     const badInput = /Invalid|must|Ticker|Token name|expired/.test(message);
     return NextResponse.json({ error: message }, { status: badInput ? 400 : 503, headers: { "Cache-Control": "no-store" } });
   } finally { client?.release(); }

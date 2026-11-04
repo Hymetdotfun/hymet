@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { assertMainnetTransactionsEnabled, serverRpcUrl } from "../../../lib/app-network";
 import { ownerStatus, prepareOwnerInitialize, prepareOwnerRotation } from "../../../lib/distributor-owner";
-import { limitedBody, sameOrigin } from "../../../lib/http";
+import { limitedBody, publicError, sameOrigin } from "../../../lib/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
     throw Error("Unsupported owner action");
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Owner request failed";
+    const message = error instanceof Error ? publicError(error.message) : "Owner request failed";
     return NextResponse.json({ error: message }, { status: /RPC|network/i.test(message) ? 503 : 400, headers: noStore });
   }
 }

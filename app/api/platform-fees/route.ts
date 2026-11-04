@@ -11,7 +11,7 @@ import { verifyPlatformFeeAuthorization } from "../../../lib/platform-fee-auth-s
 import type { PlatformFeeAuthorization } from "../../../lib/platform-fee-auth";
 import { readCreatorFees } from "../../../lib/creator-fees";
 import { prepareDammClaim, readDammPositions } from "../../../lib/damm-fees";
-import { limitedBody, sameOrigin } from "../../../lib/http";
+import { limitedBody, publicError, sameOrigin } from "../../../lib/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Platform fee request failed";
+    const message = error instanceof Error ? publicError(error.message) : "Platform fee request failed";
     const status = /Unauthorized|signature|authorization|Same-origin/.test(message)
       ? 403
       : /PostgreSQL|RPC|network|unavailable/i.test(message)

@@ -9,7 +9,25 @@ import { allocationFromBps } from "../../../lib/hymet-policy";
 import { syncGraduation } from "../../../lib/graduation";
 export const runtime = "nodejs";
 const fmt = (n?: number) => (n === undefined || !Number.isFinite(n) ? undefined : new Intl.NumberFormat("en-US", { maximumSignificantDigits: 4 }).format(n));
+// The feed reads the chain on every build, and any visitor can request it: share one result across visitors for a few seconds.
+const DIRECTORY_TTL_MS = 10_000;
+let shared: { until: number; body: unknown; pending?: undefined } | { until: 0; body?: undefined; pending: Promise<NextResponse> } | undefined;
 export async function GET() {
+  if (process.env.NODE_ENV === "test") return directory();
+  if (shared?.pending) return (await shared.pending).clone() as NextResponse;
+  if (shared && shared.until > Date.now()) return NextResponse.json(shared.body, { headers: { "Cache-Control": "no-store" } });
+  const pending = directory();
+  shared = { until: 0, pending };
+  try {
+    const response = await pending;
+    shared = response.ok ? { until: Date.now() + DIRECTORY_TTL_MS, body: await response.clone().json() } : undefined;
+    return response;
+  } catch (error) {
+    shared = undefined;
+    throw error;
+  }
+}
+async function directory() {
   if (!databaseConfigured()) return NextResponse.json({ tokens: [], indexed: false, error: "Launch index is not configured" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   try {
     const result = await query<{ mint: string; name: string; ticker: string; image_url: string | null; status: string; created_at: Date; pool: string | null; protocol: string | null; creator: string; creator_bps: number; holder_bps: number }>(

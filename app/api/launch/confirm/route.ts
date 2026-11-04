@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import { databaseConfigured, databasePool } from "../../../../lib/db";
-import { limitedBody, sameOrigin } from "../../../../lib/http";
+import { limitedBody, publicError, sameOrigin } from "../../../../lib/http";
 import { allocationFromBps, allocationFromShare, normalizeName, normalizeTicker } from "../../../../lib/hymet-policy";
 import { HYPE_MINT } from "../../../../lib/quote-assets";
 import { bps, curve, distributorCurve, units, type Inputs, validate } from "../../../../lib/config";
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
     if (client) await client.query("ROLLBACK").catch(() => {});
     const code = (error as { code?: string })?.code;
     if (code === "23505") return json("This mint or launch signature is already registered", 409);
-    return json(error instanceof Error ? error.message : "Confirmed launch registration failed", 503);
+    return json(error instanceof Error ? publicError(error.message) : "Confirmed launch registration failed", 503);
   } finally {
     client?.release();
   }
