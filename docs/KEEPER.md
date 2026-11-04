@@ -72,10 +72,12 @@ can notify Telegram (`HYMET_TELEGRAM_BOT_TOKEN`, `HYMET_TELEGRAM_CHAT_ID`):
 | `epoch-open-too-long` | A payout round open for more than 1 hour |
 | `unexpected-epoch` | A round funded on-chain that matches no keeper-prepared root: treat as a keeper-key compromise, stop the keeper and rotate the key in the owner console |
 | `alert-check-failed` | The health check itself cannot reach the database or RPC |
+| `seller-proof-mismatch` | A seller's stored balance or epoch disagrees with the snapshot hash committed on-chain. Nobody is paid from that proof: treat as database corruption or tampering and run the reconciliation |
+| `seller-proof-unavailable` | A seller is due payment but its proof could not be attempted (no origin, pruned balances, RPC). It stays carried |
 
-Telegram notifies when an alert starts, reminds every 6 hours while it lasts (hourly for `unexpected-epoch`) and reports
+Telegram notifies when an alert starts, reminds every 6 hours while it lasts (hourly for `unexpected-epoch` and `seller-proof-mismatch`) and reports
 recovery. Conditions that usually clear by themselves wait first: 10 minutes for a failed run or a stopped unit, 15 for
-migration and a broken health check, 30 for settlement, 60 for an overdue payout. Messages are plain text with URLs and
+migration and a broken health check, 30 for settlement and an unavailable seller proof, 60 for an overdue payout. Messages are plain text with URLs and
 credentials removed. A silent message every 24 hours (`HYMET_ALERT_HEARTBEAT_HOURS`) shows the alerting itself is alive;
 if it stops arriving, the server cannot send alerts at all.
 
@@ -93,7 +95,8 @@ The program requires a token balance above zero in every payout entry and cannot
 longer holds is paid with its true balance at the snapshot that allocated its carry, under the same minimums. Before
 paying, the keeper reads that snapshot's hash from the confirmed funding transaction, recomputes it from the stored
 balances and requires the wallet's balance to match. An unproven wallet stays carried and is logged as
-`seller carry not paid`. A round that pays such a wallet commits its origin epoch, slot, balance and amount in
+`seller carry not paid` and in a Telegram alert. A failure stays reported until the next snapshot rechecks it, which is
+at most 6 hours for an unchanged pool. A round that pays such a wallet commits its origin epoch, slot, balance and amount in
 `snapshot_hash` (`snapshotCommitment`), because a payout entry has no field for them.
 
 Run `scripts/reconcile-holder-rewards.ts <mint>` to compare chain, database and wallet payments to the base unit. It is

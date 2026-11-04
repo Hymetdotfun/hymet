@@ -21,7 +21,7 @@ import { MAINNET_GENESIS, assertMainnetTransactionsEnabled } from "../lib/app-ne
 import { holderPayoutsLive } from "../lib/launch-mode";
 import { awaitSignature, configuredPlatformFeeRecipient } from "../lib/transactions";
 import { verifyDistributorDeployment } from "../lib/distributor-engine";
-import { runHolderPayouts, type EmptySnapshot, type EmptySnapshotStore } from "../lib/holder-keeper";
+import { runHolderPayouts, type EmptySnapshot, type EmptySnapshotStore, type SellerProofFailure } from "../lib/holder-keeper";
 import { migrateIfEligible } from "../lib/keeper-migration";
 import { HOLDER_PAYOUT_POLICY } from "../lib/holder-payouts.mjs";
 import { KEEPER_PRIORITY_MICROLAMPORTS, describeSendFailure, keeperFetch, withPriorityFee } from "../lib/keeper-rpc";
@@ -44,7 +44,23 @@ function emptySnapshotFile(): EmptySnapshotStore | undefined {
     },
   };
 }
-function writeStatus(status: { ok: boolean; tokens: number; errors: unknown[]; settlementErrors?: MintError[]; migrationErrors?: MintError[]; carrying?: string[] }) {
+/** Seller proof failures per mint beside the status file. Proofs run only at a snapshot, so a failure must outlast the runs between them. */
+function sellerProofFile() {
+  const status = process.env.HYMET_KEEPER_STATUS_FILE;
+  const file = status ? join(dirname(status), "seller-proof-failures.json") : null;
+  let saved: Record<string, SellerProofFailure[]> = {};
+  try { if (file) saved = JSON.parse(readFileSync(file, "utf8")); } catch { /* first run */ }
+  return {
+    set: (mint: string, failures: SellerProofFailure[]) => {
+      if (failures.length) saved[mint] = failures; else delete saved[mint];
+      if (!file) return;
+      writeFileSync(`${file}.tmp`, JSON.stringify(saved));
+      renameSync(`${file}.tmp`, file);
+    },
+    all: () => Object.entries(saved).flatMap(([mint, failures]) => failures.map((f) => ({ mint, ...f }))),
+  };
+}
+function writeStatus(status: { ok: boolean; tokens: number; errors: unknown[]; settlementErrors?: MintError[]; migrationErrors?: MintError[]; carrying?: string[]; sellerProofFailures?: ({ mint: string } & SellerProofFailure)[] }) {
   const file = process.env.HYMET_KEEPER_STATUS_FILE;
   if (!file) return;
   writeFileSync(`${file}.tmp`, JSON.stringify({ at: new Date().toISOString(), ...status }));
@@ -108,6 +124,7 @@ async function main() {
       [program.toBase58(), onlyMints],
     )).rows;
     const emptySnapshots = emptySnapshotFile();
+    const sellerProofs = sellerProofFile();
     const errors: unknown[] = [], settlementErrors: MintError[] = [], migrationErrors: MintError[] = [], carrying: string[] = [];
     const simulate = async (tx: Transaction, label: string, extraSigners: Keypair[] = []) => {
       tx.feePayer = authority.publicKey;
@@ -150,6 +167,7 @@ async function main() {
       const result = await runHolderPayouts({
         connection, program, platform, authority, db, log, dryRun: !send, policy, payoutIntervalSeconds, emptySnapshots,
         onSettlementError: (mint: string, error: string) => settlementErrors.push({ mint, error: error.slice(0, 300) }),
+        onSellerProofResult: (mint: string, failures: SellerProofFailure[]) => sellerProofs.set(mint, failures),
         simulate,
         send: async (tx: Transaction, label: string) => sendTx(tx, label),
         reindex: async () => {
@@ -166,7 +184,7 @@ async function main() {
       else if ("payouts" in result && result.payouts === 0) carrying.push(String(t.mint_address));
     }
     // Only the periodic (all-token) run reports health; an instant-graduation run covers one mint.
-    if (!onlyMints) writeStatus({ ok: errors.length === 0, tokens: tokens.length, errors, settlementErrors, migrationErrors, carrying });
+    if (!onlyMints) writeStatus({ ok: errors.length === 0, tokens: tokens.length, errors, settlementErrors, migrationErrors, carrying, sellerProofFailures: sellerProofs.all() });
   } finally {
     await db.end();
   }

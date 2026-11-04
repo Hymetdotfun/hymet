@@ -14,6 +14,7 @@ import { HOLDER_PAYOUT_POLICY, decodeTokenAccount, eligibleHolders, payoutCost, 
 import { decodeDistributorEvents } from "./distributor-events.mjs";
 
 type Row = Record<string, unknown>;
+export type SellerProofFailure = { wallet: string; reason: string; kind: "mismatch" | "unavailable" };
 export type KeeperContext = {
   connection: Connection;
   program: PublicKey;
@@ -39,6 +40,8 @@ export type KeeperContext = {
   emptySnapshots?: EmptySnapshotStore;
   /** Settlement failures do not stop payouts of HYPE already settled, so they are reported here rather than thrown. */
   onSettlementError?: (mint: string, error: string) => void;
+  /** This snapshot's seller proof failures for the mint, empty once none remain; replaces what was reported before. */
+  onSellerProofResult?: (mint: string, failures: SellerProofFailure[]) => void;
 };
 
 export type EmptySnapshot = { at: number; unallocated: string };
@@ -259,14 +262,18 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   // A wallet that no longer holds is paid only when its balance at the allocating snapshot is proven against the hash
   // committed on-chain. Anything unproven stays in the ledger, attributed to that wallet.
   const proven = new Set<string>(), proofs = new Map();
-  let unverifiedSellers = 0;
+  const proofFailures: SellerProofFailure[] = [];
   for (const [wallet, owed] of carry) {
     if (holding.has(wallet) || owed < (have.has(wallet) ? policy.minPayout : policy.minPayoutNewAccount)) continue;
     const origin = carryOrigins.get(wallet);
     const problem = origin ? await verifyCarryOrigin(k, token.mint, wallet, origin, proofs).catch((e) => `verification failed: ${e instanceof Error ? e.message : String(e)}`) : "no recorded origin snapshot";
-    if (problem) { unverifiedSellers++; k.log("seller carry not paid", { mint: token.mint, wallet, reason: problem }); }
-    else proven.add(wallet);
+    if (problem) {
+      proofFailures.push({ wallet, reason: problem.slice(0, 200), kind: /does not reproduce|differs/.test(problem) ? "mismatch" : "unavailable" });
+      k.log("seller carry not paid", { mint: token.mint, wallet, reason: problem });
+    } else proven.add(wallet);
   }
+  if (!k.dryRun) k.onSellerProofResult?.(token.mint, proofFailures);
+  const unverifiedSellers = proofFailures.length;
   const plan = planHolderEpoch({ mint: token.mint, epoch: pool.nextEpoch, snapshotSlot: snapshot.context.slot, available: pool.holderUnallocated, holders, carry, carryOrigins, sellerVerified: (w) => proven.has(w), hasHypeAccount: (w) => have.has(w), policy: k.policy });
   const cost = payoutCost({ payouts: plan.payouts.length, newAccounts: plan.payouts.filter((p) => p.newAccount).length });
   const summary = { mint: token.mint, epoch: plan.epoch.toString(), snapshotSlot: snapshot.context.slot, holders: holders.length, payouts: plan.payouts.length, sellerPayouts: plan.payouts.filter((p) => p.originEpoch !== undefined).length, unverifiedSellers, chunks: plan.chunks.length, fundedHype: plan.fundedAmount.toString(), carriedHype: [...plan.carryOut.values()].reduce((s, v) => s + v, 0n).toString(), costLamports: cost.total.toString() };

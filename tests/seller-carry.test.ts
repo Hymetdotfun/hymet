@@ -215,11 +215,26 @@ describe("keeper", () => {
   ] as [string, Setup, RegExp][]) {
     it(`sends nothing and keeps the carry when ${name}`, async () => {
       const { k, sent, logs } = harness(setup);
+      const reported: { kind: string }[][] = [];
+      k.onSellerProofResult = (_m, failures) => reported.push(failures);
       expect(await run(k)).toMatchObject({ payouts: 0, unverifiedSellers: 1 });
+      expect(reported).toEqual([[expect.objectContaining({ wallet: SELLER, kind: /reproduce|differs/.test(reason.source) ? "mismatch" : "unavailable" })]]);
       expect(sent.filter((x) => /fund|pay|close/.test(x))).toEqual([]);
       expect(logs.some(([m, d]) => m === "seller carry not paid" && reason.test(String((d as { reason: string }).reason)))).toBe(true);
     });
   }
+
+  it("clears earlier failures once proven, and a dry run reports nothing", async () => {
+    const live = harness();
+    const reported: unknown[][] = [];
+    live.k.onSellerProofResult = (_m, failures) => reported.push(failures);
+    await run(live.k);
+    expect(reported).toEqual([[]]);
+    const dry = harness({ stored: null });
+    dry.k.dryRun = true;
+    dry.k.onSellerProofResult = () => { throw Error("dry run must not report"); };
+    await run(dry.k);
+  });
 
   it("does not try to prove a seller below its minimum", async () => {
     const { k, sql } = harness({ owed: 10_000_000n - 1n });
