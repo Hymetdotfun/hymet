@@ -16,6 +16,7 @@ type Ledger = {
   distributorEnabled?: boolean;
   holderRewards?: { enabled: boolean; automatic: boolean; intervalMinutes: number; mainnetPayoutVerified?: boolean };
   holderPayouts?: { mint: string; epoch: string; reward: string; paid: boolean; signature: string | null }[];
+  holderCarry?: { mint: string; amount: string }[];
   distributorProgramId?: string | null;
   creatorTokens?: LaunchStatus[];
   totals?: {
@@ -122,9 +123,10 @@ function FeeLedgerWallet() {
         </div>
         {!automaticHolderPayouts ? (
           <p className="fees-inactive-state">Not active yet</p>
-        ) : ledger?.holderPayouts?.length ? (
+        ) : ledger?.holderPayouts?.length || ledger?.holderCarry?.length ? (
           <div className="fees-payout-list" aria-label="Verified holder payout history">
-            {ledger.holderPayouts.map(p => <article key={`${p.mint}:${p.epoch}`}><span>Epoch {p.epoch}</span><strong>{formatHype(p.reward, true)}</strong><small>{p.paid ? `Paid${p.signature ? ` · ${p.signature.slice(0, 8)}…` : ""}` : "Scheduled"}</small></article>)}
+            {ledger.holderCarry?.map(c => <article key={`carry:${c.mint}`}><span>Carried · {c.mint.slice(0, 6)}…</span><strong>{formatHype(c.amount, true)}</strong><small>Yours until paid. Paid once it reaches the payout minimum.</small></article>)}
+            {ledger.holderPayouts?.map(p => <article key={`${p.mint}:${p.epoch}`}><span>Epoch {p.epoch}</span><strong>{formatHype(p.reward, true)}</strong><small>{p.paid ? `Paid${p.signature ? ` · ${p.signature.slice(0, 8)}…` : ""}` : "Scheduled"}</small></article>)}
           </div>
         ) : (
           <p className="fees-inactive-state">No confirmed payouts are indexed for this wallet yet.</p>

@@ -9,7 +9,9 @@ export const HOLDER_PAYOUT_POLICY: Readonly<{
 export const INCINERATOR: string;
 export type RawTokenAccount = { owner: string; amount: bigint; state: number; mint?: string };
 export type EligibleHolder = { wallet: string; tokenBalance: bigint };
-export type Payout = EligibleHolder & { reward: bigint; newAccount: boolean };
+export type Payout = EligibleHolder & { reward: bigint; newAccount: boolean; originEpoch?: bigint; originSnapshotSlot?: bigint };
+export type CarryOrigin = { epoch: bigint; snapshotSlot: bigint; tokenBalance: bigint };
+export type SellerSettlement = { wallet: string; originEpoch: bigint; originSnapshotSlot: bigint; tokenBalance: bigint; reward: bigint };
 export type PayoutChunk = { index: number; entries: Payout[]; leaf: Buffer; proof: Buffer[] };
 export type HolderEpochPlan = {
   mint: string;
@@ -24,12 +26,16 @@ export type HolderEpochPlan = {
   dust: bigint;
   payouts: Payout[];
   carryOut: Map<string, bigint>;
+  carryOrigins: Map<string, CarryOrigin>;
+  snapshotBalances: EligibleHolder[];
   chunks: PayoutChunk[];
   root: Buffer | null;
 };
 export function eligibleHolders(accounts: RawTokenAccount[], exclude?: string[]): EligibleHolder[];
 export function decodeTokenAccount(data: Buffer): (RawTokenAccount & { mint: string }) | null;
 export function chunkLeaf(mint: string, epoch: bigint, chunkIndex: number, entries: { wallet: string; tokenBalance: bigint; reward: bigint }[]): Buffer;
+export function snapshotCommitment(input: { mint: string; epoch: bigint; snapshotSlot: number | bigint; holders: EligibleHolder[]; settlements?: SellerSettlement[] }): Buffer;
+export function verifySnapshotBalance(input: { mint: string; epoch: bigint; snapshotSlot: number | bigint; committedHash: string; balances: Record<string, string> | null | undefined; settlements?: SellerSettlement[]; wallet: string; tokenBalance: bigint }): boolean;
 export function verifyChunkProof(leaf: Buffer, proof: Buffer[], root: Buffer): boolean;
 export function planHolderEpoch(input: {
   mint: string;
@@ -38,6 +44,8 @@ export function planHolderEpoch(input: {
   available: bigint;
   holders: EligibleHolder[];
   carry?: Map<string, bigint>;
+  carryOrigins?: Map<string, CarryOrigin>;
+  sellerVerified?: (wallet: string) => boolean;
   hasHypeAccount: (wallet: string) => boolean;
   policy?: typeof HOLDER_PAYOUT_POLICY;
 }): HolderEpochPlan;

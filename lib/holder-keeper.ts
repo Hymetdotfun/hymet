@@ -9,7 +9,9 @@ import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAd
 import { HYPE_MINT } from "./quote-assets";
 import { closeHolderEpoch, decodeFeePool, distributeHolderChunk, distributorAddresses, fundDistributorEpoch, holderEpochAddress } from "./distributor-engine";
 import { settlementInstructions } from "./distributor-settlement";
-import { HOLDER_PAYOUT_POLICY, decodeTokenAccount, eligibleHolders, payoutCost, planHolderEpoch, type HolderEpochPlan } from "./holder-payouts.mjs";
+import { HOLDER_PAYOUT_POLICY, decodeTokenAccount, eligibleHolders, payoutCost, planHolderEpoch, verifySnapshotBalance, type CarryOrigin, type HolderEpochPlan } from "./holder-payouts.mjs";
+
+import { decodeDistributorEvents } from "./distributor-events.mjs";
 
 type Row = Record<string, unknown>;
 export type KeeperContext = {
@@ -77,6 +79,37 @@ const ATA_BATCH = 8;
 export const MAX_SETTLEMENTS_PER_RUN = 6;
 const tx = (...ixs: TransactionInstruction[]) => new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }), ...ixs);
 
+type EpochProof = { hash: string; slot: bigint; balances: Record<string, string> | null; settlements: { wallet: string; tokenBalance: bigint; reward: bigint; originEpoch: bigint; originSnapshotSlot: bigint }[] } | string;
+
+/** One funded epoch's stored balances and the snapshot hash read back from its confirmed funding transaction. */
+async function epochProof(k: Pick<KeeperContext, "connection" | "program" | "db">, mint: string, epoch: bigint): Promise<EpochProof> {
+  const row = (await k.db.query(
+    "SELECT e.snapshot_hash,e.snapshot_slot::text,e.funding_signature,c.snapshot_balances FROM holder_reward_epochs e JOIN holder_snapshot_candidates c USING(mint_address,epoch) WHERE e.mint_address=$1 AND e.epoch=$2",
+    [mint, epoch.toString()],
+  )).rows[0];
+  if (!row) return "origin epoch is not indexed";
+  if (!row.snapshot_balances) return "origin snapshot balances are not stored";
+  const funding = await k.connection.getTransaction(String(row.funding_signature), { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+  const event = (decodeDistributorEvents(funding?.meta?.logMessages ?? [], k.program.toBase58()) as unknown as { type: string; payload: Record<string, unknown> }[]).find((x) => x.type === "HolderEpochFunded" && x.payload.mint === mint && String(x.payload.epoch) === epoch.toString());
+  if (!event) return "funding event not found on-chain";
+  if (event.payload.snapshotHash !== row.snapshot_hash || String(event.payload.snapshotSlot) !== String(row.snapshot_slot)) return "stored epoch differs from the on-chain funding event";
+  const settlements = (await k.db.query(
+    "SELECT token_balance::text,wallet_address,reward_amount::text,origin_epoch::text,origin_snapshot_slot::text FROM holder_snapshot_candidate_rows WHERE mint_address=$1 AND epoch=$2 AND origin_epoch IS NOT NULL",
+    [mint, epoch.toString()],
+  )).rows.map((r) => ({ wallet: String(r.wallet_address), tokenBalance: BigInt(String(r.token_balance)), reward: BigInt(String(r.reward_amount)), originEpoch: BigInt(String(r.origin_epoch)), originSnapshotSlot: BigInt(String(r.origin_snapshot_slot)) }));
+  return { hash: String(event.payload.snapshotHash), slot: BigInt(String(event.payload.snapshotSlot)), balances: row.snapshot_balances as Record<string, string>, settlements };
+}
+
+/** Proves a carried wallet's balance against the snapshot hash committed on-chain. Returns why not, or null when proven. */
+export async function verifyCarryOrigin(k: Pick<KeeperContext, "connection" | "program" | "db">, mint: string, wallet: string, origin: CarryOrigin, cache: Map<string, EpochProof> = new Map()): Promise<string | null> {
+  const key = origin.epoch.toString();
+  if (!cache.has(key)) cache.set(key, await epochProof(k, mint, origin.epoch));
+  const proof = cache.get(key)!;
+  if (typeof proof === "string") return proof;
+  if (proof.slot !== origin.snapshotSlot) return "origin slot differs from the funded snapshot";
+  return verifySnapshotBalance({ mint, epoch: origin.epoch, snapshotSlot: origin.snapshotSlot, committedHash: proof.hash, balances: proof.balances, settlements: proof.settlements, wallet, tokenBalance: origin.tokenBalance }) ? null : "balance does not reproduce the committed snapshot hash";
+}
+
 async function existingAccounts(c: Connection, wallets: string[]) {
   const atas = wallets.map((w) => getAssociatedTokenAddressSync(HYPE_MINT, new PublicKey(w), true));
   const found = new Set<string>();
@@ -134,18 +167,20 @@ async function finishOpenEpoch(k: KeeperContext, mint: PublicKey, epoch: bigint)
 
 async function persistPlan(k: KeeperContext, plan: HolderEpochPlan) {
   const carryAfter = Object.fromEntries([...plan.carryOut].map(([w, v]) => [w, v.toString()]));
+  const carryOrigins = Object.fromEntries([...plan.carryOrigins].map(([w, o]) => [w, { epoch: o.epoch.toString(), snapshotSlot: o.snapshotSlot.toString(), tokenBalance: o.tokenBalance.toString() }]));
+  const snapshotBalances = Object.fromEntries(plan.snapshotBalances.map((h) => [h.wallet, h.tokenBalance.toString()]));
   await k.db.query("BEGIN");
   try {
     await k.db.query("DELETE FROM holder_snapshot_candidates WHERE mint_address=$1 AND epoch=$2 AND status='prepared'", [plan.mint, plan.epoch.toString()]);
     await k.db.query(
-      "INSERT INTO holder_snapshot_candidates(mint_address,epoch,snapshot_slot,snapshot_hash,merkle_root,funded_amount,allocated_amount,chunk_count,carry_after) VALUES($1,$2,$3,$4,$5,$6,$6,$7,$8::jsonb)",
-      [plan.mint, plan.epoch.toString(), plan.snapshotSlot.toString(), plan.snapshotHash.toString("hex"), plan.root!.toString("hex"), plan.fundedAmount.toString(), plan.chunks.length, JSON.stringify(carryAfter)],
+      "INSERT INTO holder_snapshot_candidates(mint_address,epoch,snapshot_slot,snapshot_hash,merkle_root,funded_amount,allocated_amount,chunk_count,carry_after,carry_origins,snapshot_balances) VALUES($1,$2,$3,$4,$5,$6,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb)",
+      [plan.mint, plan.epoch.toString(), plan.snapshotSlot.toString(), plan.snapshotHash.toString("hex"), plan.root!.toString("hex"), plan.fundedAmount.toString(), plan.chunks.length, JSON.stringify(carryAfter), JSON.stringify(carryOrigins), JSON.stringify(snapshotBalances)],
     );
     for (const c of plan.chunks)
       for (const e of c.entries)
         await k.db.query(
-          "INSERT INTO holder_snapshot_candidate_rows(mint_address,epoch,wallet_address,token_balance,reward_amount,leaf_hash,merkle_proof,chunk_index,new_account) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)",
-          [plan.mint, plan.epoch.toString(), e.wallet, e.tokenBalance.toString(), e.reward.toString(), c.leaf.toString("hex"), JSON.stringify(c.proof.map((p) => p.toString("hex"))), c.index, e.newAccount],
+          "INSERT INTO holder_snapshot_candidate_rows(mint_address,epoch,wallet_address,token_balance,reward_amount,leaf_hash,merkle_proof,chunk_index,new_account,origin_epoch,origin_snapshot_slot) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)",
+          [plan.mint, plan.epoch.toString(), e.wallet, e.tokenBalance.toString(), e.reward.toString(), c.leaf.toString("hex"), JSON.stringify(c.proof.map((p) => p.toString("hex"))), c.index, e.newAccount, e.originEpoch?.toString() ?? null, e.originSnapshotSlot?.toString() ?? null],
         );
     await k.db.query("COMMIT");
   } catch (e) {
@@ -216,11 +251,25 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
   });
   const accounts = snapshot.value.map((x) => decodeTokenAccount(x.account.data as Buffer)).filter((x) => x !== null);
   const holders = eligibleHolders(accounts, [k.platform.toBase58(), a.feePool.toBase58()]);
-  const carry = new Map((await k.db.query("SELECT wallet_address,amount::text FROM holder_reward_carry WHERE mint_address=$1", [token.mint])).rows.map((r) => [String(r.wallet_address), BigInt(String(r.amount))]));
-  const have = await existingAccounts(k.connection, holders.map((h) => h.wallet));
-  const plan = planHolderEpoch({ mint: token.mint, epoch: pool.nextEpoch, snapshotSlot: snapshot.context.slot, available: pool.holderUnallocated, holders, carry, hasHypeAccount: (w) => have.has(w), policy: k.policy });
+  const carryRows = (await k.db.query("SELECT wallet_address,amount::text,origin_epoch::text,origin_snapshot_slot::text,origin_token_balance::text FROM holder_reward_carry WHERE mint_address=$1", [token.mint])).rows;
+  const carry = new Map(carryRows.map((r) => [String(r.wallet_address), BigInt(String(r.amount))]));
+  const carryOrigins = new Map<string, CarryOrigin>(carryRows.filter((r) => r.origin_epoch !== null && r.origin_epoch !== undefined).map((r) => [String(r.wallet_address), { epoch: BigInt(String(r.origin_epoch)), snapshotSlot: BigInt(String(r.origin_snapshot_slot)), tokenBalance: BigInt(String(r.origin_token_balance)) }]));
+  const holding = new Set(holders.map((h) => h.wallet));
+  const have = await existingAccounts(k.connection, [...new Set([...holding, ...carry.keys()])]);
+  // A wallet that no longer holds is paid only when its balance at the allocating snapshot is proven against the hash
+  // committed on-chain. Anything unproven stays in the ledger, attributed to that wallet.
+  const proven = new Set<string>(), proofs = new Map();
+  let unverifiedSellers = 0;
+  for (const [wallet, owed] of carry) {
+    if (holding.has(wallet) || owed < (have.has(wallet) ? policy.minPayout : policy.minPayoutNewAccount)) continue;
+    const origin = carryOrigins.get(wallet);
+    const problem = origin ? await verifyCarryOrigin(k, token.mint, wallet, origin, proofs).catch((e) => `verification failed: ${e instanceof Error ? e.message : String(e)}`) : "no recorded origin snapshot";
+    if (problem) { unverifiedSellers++; k.log("seller carry not paid", { mint: token.mint, wallet, reason: problem }); }
+    else proven.add(wallet);
+  }
+  const plan = planHolderEpoch({ mint: token.mint, epoch: pool.nextEpoch, snapshotSlot: snapshot.context.slot, available: pool.holderUnallocated, holders, carry, carryOrigins, sellerVerified: (w) => proven.has(w), hasHypeAccount: (w) => have.has(w), policy: k.policy });
   const cost = payoutCost({ payouts: plan.payouts.length, newAccounts: plan.payouts.filter((p) => p.newAccount).length });
-  const summary = { mint: token.mint, epoch: plan.epoch.toString(), snapshotSlot: snapshot.context.slot, holders: holders.length, payouts: plan.payouts.length, chunks: plan.chunks.length, fundedHype: plan.fundedAmount.toString(), carriedHype: [...plan.carryOut.values()].reduce((s, v) => s + v, 0n).toString(), costLamports: cost.total.toString() };
+  const summary = { mint: token.mint, epoch: plan.epoch.toString(), snapshotSlot: snapshot.context.slot, holders: holders.length, payouts: plan.payouts.length, sellerPayouts: plan.payouts.filter((p) => p.originEpoch !== undefined).length, unverifiedSellers, chunks: plan.chunks.length, fundedHype: plan.fundedAmount.toString(), carriedHype: [...plan.carryOut.values()].reduce((s, v) => s + v, 0n).toString(), costLamports: cost.total.toString() };
   if (!plan.payouts.length) {
     if (!k.dryRun) k.emptySnapshots?.set(token.mint, { at: now, unallocated: pool.holderUnallocated.toString() });
     return { ...summary, skipped: "no holder reached the payout minimum; amounts carry over" };

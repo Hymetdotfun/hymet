@@ -65,6 +65,13 @@ export async function GET(request: NextRequest) {
           [new PublicKey(wallet).toBase58(), HYPE_MINT.toBase58()],
         )).rows.map((r) => ({ mint: r.mint_address, epoch: r.epoch, reward: amount(r.reward_amount), paid: r.claimed_amount === r.reward_amount, signature: r.signature }))
       : [];
+    // Carried rewards stay attributed to the wallet that earned them, including after it sells.
+    const holderCarry = wallet && distributor
+      ? (await query<{ mint_address: string; amount: string }>(
+          "SELECT mint_address,amount::text FROM holder_reward_carry WHERE wallet_address=$1 AND amount>0 ORDER BY updated_at DESC LIMIT 50",
+          [new PublicKey(wallet).toBase58()],
+        )).rows.map((r) => ({ mint: r.mint_address, amount: amount(r.amount) }))
+      : [];
     const row = totals.rows[0];
     const payoutStatus = await holderRewardsStatus();
     // Creator view of distributor launches: claimable share, automatic settlement/payout/migration status.
@@ -98,6 +105,7 @@ export async function GET(request: NextRequest) {
         },
         claimable: claimable ? amount(claimable.rows[0]?.amount) : null,
         holderPayouts,
+        holderCarry,
         creatorTokens,
         preparedEpochs,
         distributorProgramId: distributor?.program.toBase58() ?? null,

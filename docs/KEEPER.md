@@ -87,6 +87,19 @@ reached the payout minimum. After a snapshot that finds nobody to pay, the keepe
 reached the pool and 15 minutes have passed, or 6 hours have passed. Creating a holder's HYPE account costs about 0.0015 SOL of rent, paid once by the
 keeper, so a holder must be owed at least 0.05 HYPE before the keeper creates one.
 
+### Wallets that sold
+
+The program requires a token balance above zero in every payout entry and cannot read past balances. A wallet that no
+longer holds is paid with its true balance at the snapshot that allocated its carry, under the same minimums. Before
+paying, the keeper reads that snapshot's hash from the confirmed funding transaction, recomputes it from the stored
+balances and requires the wallet's balance to match. An unproven wallet stays carried and is logged as
+`seller carry not paid`. A round that pays such a wallet commits its origin epoch, slot, balance and amount in
+`snapshot_hash` (`snapshotCommitment`), because a payout entry has no field for them.
+
+Run `scripts/reconcile-holder-rewards.ts <mint>` to compare chain, database and wallet payments to the base unit. It is
+read-only. `scripts/backfill-snapshot-balances.ts` records balances for a snapshot taken before origins were stored,
+and refuses unless they reproduce the on-chain hash.
+
 ## RPC
 
 The holder snapshot is a `getProgramAccounts` query on the SPL Token program filtered by mint. The public Mainnet

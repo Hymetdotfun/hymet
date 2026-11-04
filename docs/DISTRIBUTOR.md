@@ -55,7 +55,8 @@ token instead of HYPE is rejected and rolled back; HYMET launches only collect f
 1. The keeper settles fees, then snapshots every token account of the mint at one slot. It excludes empty and frozen
    accounts, accounts owned by program-derived addresses (pool vaults), the incinerator and the HYMET platform wallet.
 2. It computes each holder's pro-rata share of the holder pool. Amounts below the minimum (0.01 HYPE, or 0.05 HYPE when
-   the keeper must create the holder's HYPE account) carry over to the next round.
+   the keeper must create the holder's HYPE account) carry over to the next round. Carry stays attributed to the wallet
+   after it sells and is never shared with other holders. It leaves the ledger only as a payment to that wallet.
 3. It commits a Merkle root over chunks of up to 6 holders with `fund_holder_epoch`. Each leaf binds the mint, epoch,
    chunk index, sorted wallets, token balances and rewards.
 4. It pushes every chunk with `distribute_holder_chunk`. Holders never sign or claim. Each chunk can be paid once, only
