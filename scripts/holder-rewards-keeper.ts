@@ -9,7 +9,7 @@
 //      HYMET_KEEPER_MINTS (optional, comma-separated): only these mints, e.g. an instant-graduation run from
 //      scripts/graduation-watcher.mjs. Unset = every distributor token (the periodic run).
 //      HYMET_KEEPER_PRIORITY_MICROLAMPORTS (optional): compute-unit price for keeper transactions (default 20000; 0 = none).
-//      HYMET_KEEPER_STATUS_FILE (optional): written after each run ({at, ok, tokens, errors}) for scripts/keeper-alerts.mjs.
+//      HYMET_KEEPER_STATUS_FILE (optional): written after each run ({at, ok, tokens, errors, settlementErrors, migrationErrors, carrying}) for scripts/keeper-alerts.mjs.
 // The keypair is read from disk and never printed.
 import { spawn } from "node:child_process";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -28,7 +28,8 @@ const RPC_TIMEOUT_MS = 30_000, REINDEX_TIMEOUT_MS = 180_000;
 /** Nominal 400 ms slots: 9,000 per hour. */
 const SLOTS_PER_HOUR = 9_000n;
 
-function writeStatus(status: { ok: boolean; tokens: number; errors: unknown[] }) {
+type MintError = { mint: string; error: string };
+function writeStatus(status: { ok: boolean; tokens: number; errors: unknown[]; settlementErrors?: MintError[]; migrationErrors?: MintError[]; carrying?: string[] }) {
   const file = process.env.HYMET_KEEPER_STATUS_FILE;
   if (!file) return;
   writeFileSync(`${file}.tmp`, JSON.stringify({ at: new Date().toISOString(), ...status }));
@@ -89,7 +90,7 @@ async function main() {
       "SELECT t.mint_address,p.pool_address FROM tokens t JOIN pools p USING(mint_address) WHERE t.distributor_program_id=$1 AND t.holder_share_of_remaining_bps>0 AND p.protocol='meteora_dbc' AND ($2::text[] IS NULL OR t.mint_address=ANY($2)) ORDER BY t.created_at",
       [program.toBase58(), onlyMints],
     )).rows;
-    const errors: unknown[] = [];
+    const errors: unknown[] = [], settlementErrors: MintError[] = [], migrationErrors: MintError[] = [], carrying: string[] = [];
     const simulate = async (tx: Transaction, label: string, extraSigners: Keypair[] = []) => {
       tx.feePayer = authority.publicKey;
       tx.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
@@ -122,8 +123,10 @@ async function main() {
       const migration = !migrates(String(t.mint_address)) ? { mint: t.mint_address, migrate: false, status: "auto-migration not enabled for this mint" } : await migrateIfEligible({ connection, program, authority, dryRun: !send, simulate, send: async (tx, label, extra) => sendTx(tx, label, extra) }, { mint: String(t.mint_address), dbcPool: String(t.pool_address) })
         .catch((e: unknown) => ({ mint: t.mint_address, error: e instanceof Error ? e.message : String(e) }));
       log("migration check", migration);
+      if ("error" in migration) migrationErrors.push({ mint: String(t.mint_address), error: String(migration.error).slice(0, 300) });
       const result = await runHolderPayouts({
         connection, program, platform, authority, db, log, dryRun: !send, policy, payoutIntervalSlots,
+        onSettlementError: (mint: string, error: string) => settlementErrors.push({ mint, error: error.slice(0, 300) }),
         simulate,
         send: async (tx: Transaction, label: string) => sendTx(tx, label),
         reindex: async () => {
@@ -137,9 +140,10 @@ async function main() {
       }, { mint: String(t.mint_address), dbcPool: String(t.pool_address) }).catch((e: unknown) => ({ mint: t.mint_address, error: e instanceof Error ? e.message : String(e) }));
       log("token result", result);
       if ("error" in result) errors.push(result);
+      else if ("payouts" in result && result.payouts === 0) carrying.push(String(t.mint_address));
     }
     // Only the periodic (all-token) run reports health; an instant-graduation run covers one mint.
-    if (!onlyMints) writeStatus({ ok: errors.length === 0, tokens: tokens.length, errors });
+    if (!onlyMints) writeStatus({ ok: errors.length === 0, tokens: tokens.length, errors, settlementErrors, migrationErrors, carrying });
   } finally {
     await db.end();
   }

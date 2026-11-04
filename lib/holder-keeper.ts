@@ -30,6 +30,8 @@ export type KeeperContext = {
   /** Minimum slots between holder snapshots (the advertised payout interval). Migration, registration and settlement
    *  still run on every tick, so a short timer serves instant graduation without paying holders every few minutes. */
   payoutIntervalSlots?: bigint;
+  /** Settlement failures do not stop payouts of HYPE already settled, so they are reported here rather than thrown. */
+  onSettlementError?: (mint: string, error: string) => void;
 };
 
 /** Never fund an epoch the keeper cannot finish: planned fees and new accounts plus the epoch rent, with headroom. */
@@ -165,7 +167,9 @@ export async function runHolderPayouts(k: KeeperContext, token: { mint: string; 
       if (k.dryRun || (settle.source === "dbc" && !settle.dammDue)) break;
     }
   } catch (e) {
-    k.log("settlement skipped", e instanceof Error ? e.message : e);
+    const message = e instanceof Error ? e.message : String(e);
+    k.log("settlement skipped", message);
+    k.onSettlementError?.(token.mint, message);
   }
   pool = await readPool();
   // No holder can reach a payout threshold when the whole undistributed pool (which bounds carry) is below the

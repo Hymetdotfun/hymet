@@ -51,6 +51,16 @@ describe("keeper settlement right after graduation", () => {
     expect(h.sources).toEqual([]);
   });
 
+  it("reports a settlement failure and still finishes the run", async () => {
+    h.sources = [];
+    const { k, sent } = harness();
+    const failures: [string, string][] = [];
+    k.onSettlementError = (m, e) => failures.push([m, e]);
+    await expect(runHolderPayouts(k, token)).resolves.toMatchObject({ mint: token.mint });
+    expect(failures).toEqual([[token.mint, "no settlement expected"]]);
+    expect(sent).toEqual([]);
+  });
+
   it("settles every DAMM v2 position with pending fees in one run, then stops", async () => {
     h.sources = [{ source: "damm" }, { source: "damm" }, { source: "damm", nothingToCollect: true }, { source: "damm" }];
     const { k, sent } = harness();

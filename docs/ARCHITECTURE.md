@@ -46,7 +46,7 @@ flowchart TB
 | Keeper | `scripts/holder-rewards-keeper.ts`, `lib/holder-keeper.ts` | Migration, canonical pool registration, settlement, holder snapshots and payouts; see [KEEPER.md](KEEPER.md) |
 | Graduation watcher | `scripts/graduation-watcher.mjs` | Runs the keeper for a mint the moment its curve completes (PostgreSQL `LISTEN hymet_graduation`) |
 | Indexer | `scripts/index-distributor.mjs`, `lib/distributor-index.mjs` | Decodes confirmed distributor events into the database, idempotently |
-| Alerts | `scripts/keeper-alerts.mjs`, `lib/keeper-alerts.mjs` | Failed or stale keeper runs, low keeper SOL, long-open epochs, unexpected funded epochs |
+| Alerts | `scripts/keeper-alerts.mjs`, `lib/keeper-alerts.mjs` | Failed or stale keeper runs, low keeper SOL, stalled settlement or graduation, overdue or stuck payouts, unexpected funded epochs; Telegram or webhook delivery |
 
 ## Transaction safety
 

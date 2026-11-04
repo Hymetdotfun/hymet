@@ -58,15 +58,26 @@ state directory writable.
 
 ## Alerts
 
-`scripts/keeper-alerts.mjs` prints one JSON line, exits 1 when an alert fires and can POST to
-`HYMET_ALERT_WEBHOOK_URL`:
+`scripts/keeper-alerts.mjs` prints one JSON line, exits 1 when an alert fires, can POST to `HYMET_ALERT_WEBHOOK_URL` and
+can notify Telegram (`HYMET_TELEGRAM_BOT_TOKEN`, `HYMET_TELEGRAM_CHAT_ID`):
 
 | Alert | Condition |
 |---|---|
 | `keeper-failed` / `keeper-stale` / `keeper-no-status` | Last full run had errors, or none finished in 30 minutes |
+| `keeper-unit-down` | A unit named in `HYMET_ALERT_UNITS` is not active |
 | `keeper-sol-low` | Keeper balance below 0.05 SOL |
-| `epoch-open-too-long` | A payout round open for more than 48 hours |
+| `settlement-stalled` | Fee settlement for a token keeps failing |
+| `migration-stalled` | Migration keeps failing, or a curve completed 30 minutes ago with no registered DAMM v2 pool |
+| `payout-overdue` | Holder HYPE that can be paid has waited more than 30 hours since the last snapshot |
+| `epoch-open-too-long` | A payout round open for more than 6 hours |
 | `unexpected-epoch` | A round funded on-chain that matches no keeper-prepared root: treat as a keeper-key compromise, stop the keeper and rotate the key in the owner console |
+| `alert-check-failed` | The health check itself cannot reach the database or RPC |
+
+Telegram notifies when an alert starts, reminds every 6 hours while it lasts (hourly for `unexpected-epoch`) and reports
+recovery. Conditions that usually clear by themselves wait first: 10 minutes for a failed run or a stopped unit, 15 for
+migration and a broken health check, 30 for settlement, 60 for an overdue payout. Messages are plain text with URLs and
+credentials removed. A silent message every 24 hours (`HYMET_ALERT_HEARTBEAT_HOURS`) shows the alerting itself is alive;
+if it stops arriving, the server cannot send alerts at all.
 
 ## Costs
 
