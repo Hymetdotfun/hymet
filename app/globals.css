@@ -1242,8 +1242,6 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 .fees-metrics article strong{color:var(--fees-text);font-size:clamp(17px,2vw,22px);font-weight:620;font-variant-numeric:tabular-nums;letter-spacing:-.025em;overflow-wrap:anywhere}
 .fees-metrics article small{color:#80958d;font-size:10px;line-height:1.4}
 .fees-index-note{margin:13px 0 0;color:#82968e;font-size:10px;line-height:1.55}
-.fees-holder-section{padding-block:20px}
-.fees-holder-section .fees-section-heading{margin-bottom:12px}
 .fees-inactive-state{margin:0;padding:11px 13px;border-radius:9px;background:var(--fees-wallet);color:#b1c5bd;font-size:12px;line-height:1.55}
 .fees-payout-list{display:grid;gap:8px}
 .fees-payout-list article{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:11px 13px;border-radius:9px;background:#08120f;color:var(--fees-muted);font-size:11px}
@@ -1266,8 +1264,6 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 .fees-page .review-row strong{color:var(--fees-text)}
 .fees-page .address{border-color:var(--fees-border);color:var(--fees-muted)}
 .fees-page .address a,.fees-page .fees-disclosure a{color:var(--fees-teal)}
-.fees-pool-operations{padding-block:20px}
-.fees-pool-operations .fees-section-heading{margin-bottom:12px}
 .fees-pool-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:13px 0;border-top:1px solid var(--fees-border)}
 .fees-pool-row>div:first-child{display:grid;gap:5px;min-width:0}
 .fees-pool-row strong{color:var(--fees-text);font-size:12px}
@@ -1654,7 +1650,8 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 .earn-advanced-body .damm-technical-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:0}
 .creator-token-choice-venue[data-venue="DAMM v2"]{color:#3fd98a}
 @media(max-width:560px){.earn-card{padding:14px}.earn-advanced-body .damm-technical-grid,.earn-confirm dl{grid-template-columns:minmax(0,1fr)}}
-.fees-page .panel-card.earn-section{padding:0;border:0;background:none;box-shadow:none}
+.fees-page .panel-card.earn-section{gap:17px;box-shadow:none}
+.fees-page .panel-card.earn-section .earn-section-title{margin:0}
 .fees-page .earn-section .results.creator-claim{margin:0;padding:0;border:0;background:none;box-shadow:none}
 .fees-page .earn-card .earn-consent input[type="checkbox"]{flex:0 0 16px;width:16px;height:16px;min-height:0;margin:2px 0 0;padding:0;border-radius:4px}
 .fees-page .earn-card .earn-advanced-body input:not([type="checkbox"]),.fees-page .earn-card .earn-advanced-body select{min-height:38px;font-size:12px}
@@ -1662,7 +1659,8 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 .earn-status>div{display:flex;justify-content:space-between;gap:12px;min-width:0}
 .earn-status dt{flex:none;color:#93aaa3;font-size:12px}
 .earn-status dd{margin:0;color:#dfe9e5;font-size:12px;text-align:right;overflow-wrap:anywhere}
-.fees-page .fees-pool-operations.earn-section{padding:0;border:0;background:none;box-shadow:none}
+.fees-page .fees-pool-operations.earn-section{box-shadow:none}
+.fees-page .fees-pool-operations.earn-section .fees-section-heading{margin-bottom:3px}
 @media(max-width:560px){.earn-status>div{flex-direction:column;gap:2px}.earn-status dd{text-align:left}}
 .fee-distribution{padding:18px 18px 0}.fee-distribution-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.fee-distribution-cards>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:14px 16px;background:#0a180f;border:1px solid #244430;border-radius:10px}.fee-distribution-cards small{color:#81958d;font-size:10px;letter-spacing:.1em}.fee-distribution-cards b{font-size:22px;line-height:1.3;font-variant-numeric:tabular-nums;color:var(--ink)}.fee-distribution-cards span{color:var(--muted);font-size:11px;line-height:1.5}.fee-distribution-note{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.6}@media(max-width:900px){.fee-distribution-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:380px){.fee-distribution-cards b{font-size:19px}.fee-distribution-cards>div{padding:12px}}
 .owner-rotate-input{flex:1 1 320px;min-width:0;min-height:32px;padding:0 11px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:inherit;font:inherit;font-size:11px}
