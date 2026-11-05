@@ -71,7 +71,7 @@ async function launchPools(): Promise<LaunchPool[]> {
 // The route works per launch, not from the global launch mode: only launches with no distributor are listed or prepared
 // here, and readPlatformFees checks each one's on-chain native-split config. Distributor launches pay HYMET on settlement.
 // Each platform wallet sees only the launches whose immutable DBC feeClaimer it is: the legacy wallet keeps
-// HYTEST/DOGE/HYPAD, the current wallet every launch made after the change.
+// the launches made before the change, the current wallet every launch made after it.
 async function inspect(connection: Connection, wallet: PublicKey, platform: PublicKey) {
   const pools = await launchPools();
   const generation = platformFeeGeneration(wallet, platform);

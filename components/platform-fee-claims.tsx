@@ -273,7 +273,7 @@ function PlatformFeeClaimsWallet() {
           <p className="platform-wallet-address">{publicKey.toBase58()}</p>
           <p className="platform-claims-generation">
             {generation === "legacy"
-              ? "Fee claimer of launches made before the platform wallet change (HYTEST, DOGE, HYPAD). New launches pay the current platform wallet."
+              ? "Fee claimer of launches made before the platform wallet change. New launches pay the current platform wallet."
               : "Current platform wallet: fee claimer of every launch since the platform wallet change. Earlier launches are claimed from the legacy wallet."}
           </p>
         </div>

@@ -1,8 +1,8 @@
 import { PublicKey } from "@solana/web3.js";
 
 /**
- * DBC feeClaimers of native-split launches made before the 2026-10-31 platform wallet change
- * (HYTEST, DOGE, HYPAD). A DBC config's feeClaimer is immutable, so these launches keep paying
+ * DBC feeClaimers of native-split launches made before the 2026-10-31 platform wallet change.
+ * A DBC config's feeClaimer is immutable, so these launches keep paying
  * the 20% platform share to this wallet; it stays accepted for their swaps and platform claims.
  * New launches always use HYMET_PLATFORM_FEE_RECIPIENT. Must equal
  * config/production.json legacyPlatformFeeWallets (enforced by tests and check-production).

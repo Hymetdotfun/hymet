@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Connection } from "@solana/web3.js";
 
-const MINT = "DA2ijvE3TQaNEb1dP4D9LSg1LSFLoqUdMV5RMTGLkFmo", POOL = "5vUjNEyUTGkcXXRmDtnpRSMLxtMqZGoegJCaSLrjofj6";
+const MINT = "So11111111111111111111111111111111111111112", POOL = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const HYPE = "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g";
 vi.mock("../lib/db", () => ({ query: vi.fn(async () => ({ rows: [{ pool_address: POOL, protocol: "meteora_damm_v2", status: "migrated" }], rowCount: 1 })) }));
 
