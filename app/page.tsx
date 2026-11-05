@@ -20,7 +20,7 @@ export default function Home() {
       <section className="home-explore" id="explore" aria-labelledby="explore-title">
         <header className="home-explore-heading">
           <div><h2 id="explore-title">Discover What&apos;s<br /><span>Launching.</span></h2><p>Explore tokens launched with HYPE. Discover new projects, follow their progress, and find your next opportunity.</p></div>
-          <Link className="text-link explore-all" href="/explore">Open Explore <span aria-hidden="true">↗</span></Link>
+          <Link className="text-link explore-all" href="/explore">Open Explore</Link>
         </header>
         <TokenFeed emptyVariant="explore" />
       </section>

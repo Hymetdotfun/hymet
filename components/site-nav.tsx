@@ -114,7 +114,7 @@ export function SiteFooter() {
       <nav className="footer-column" aria-labelledby="footer-resources">
         <h2 className="footer-heading" id="footer-resources">Resources</h2>
         <Link href="/docs">Documentation</Link>
-        <a href="https://meteora.ag" target="_blank" rel="noreferrer">Meteora ↗</a>
+        <a href="https://meteora.ag" target="_blank" rel="noreferrer">Meteora</a>
       </nav>
       <div className="footer-column footer-about" role="group" aria-labelledby="footer-about">
         <h2 className="footer-heading" id="footer-about">About HYMET</h2>

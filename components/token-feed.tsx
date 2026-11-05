@@ -164,7 +164,7 @@ export function TokenFeed({ compact = false, emptyVariant = "default" }: { compa
             </svg>
             <b>The Next Launch Starts Here.</b>
             <p>Be among the first to launch a token with HYPE.</p>
-            <Link className="button-primary" href="/launch">Launch a Token <span aria-hidden="true">↗</span></Link>
+            <Link className="button-primary" href="/launch">Launch a Token</Link>
           </div>
         ) : (
           <div className="empty-panel">
