@@ -60,7 +60,7 @@ sequenceDiagram
     participant K as Keeper
     participant D as DAMM v2
     C->>A: Name, ticker, artwork, fee, split
-    A->>A: Record the launch (wallet-signed; names need not be unique)
+    A->>A: Record the launch (wallet-signed, names need not be unique)
     A->>C: Unsigned launch transaction for review
     C->>DBC: Sign: create token, curve config and pool (+ optional first buy)
     A->>A: Verify on-chain state, index the launch
