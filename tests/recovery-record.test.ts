@@ -50,7 +50,7 @@ function record(): RecoveryRecord {
     mint: fixture.addresses.mint,
     pool: fixture.addresses.pool,
     config: fixture.addresses.config,
-    values: { ...defaults, name: "owa", symbol: "owa" },
+    values: { ...defaults, name: "fixture", symbol: "FIXT" },
     uri: "https://example.com/meta",
     recipients: { partner: fixture.creator, leftover: fixture.creator },
     steps: [
@@ -101,7 +101,7 @@ function connection() {
   return { c, sdk, actual };
 }
 // This archived fixture uses a different quote mint, so it must not be reused by HYPE-only launches.
-it.skip("accepts the exact finalized owa config against its original on-chain createConfig2 instruction", () => {
+it.skip("accepts the exact finalized archived config against its original on-chain createConfig2 instruction", () => {
   const { sdk, actual } = connection();
   const decoded = new BorshInstructionCoder(sdk.program.idl).decode(
     Buffer.from(bs58.decode(fixture.configInstructionBase58)),
