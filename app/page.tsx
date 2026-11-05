@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { TokenFeed } from "../components/token-feed";
 import { CosmicCanvas } from "../components/cosmic-canvas";
+import { SHARE_OPEN_GRAPH } from "../lib/share-metadata";
+
+export const metadata = { openGraph: { ...SHARE_OPEN_GRAPH, url: "/" } };
 
 export default function Home() {
   return (

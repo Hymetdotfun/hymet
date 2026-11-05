@@ -3,7 +3,11 @@ import { SiteFooter, SiteNav } from "../components/site-nav";
 import { ScrollReveals } from "../components/scroll-reveals";
 import { WalletAppProvider } from "../components/wallet-app-provider";
 import { TestNetworkBanner } from "../components/test-network-banner";
+import { SHARE_OPEN_GRAPH, SHARE_TWITTER } from "../lib/share-metadata";
 export const metadata = { title: "HYMET — Where HYPE Launches", description: "A HYPE-only token launchpad on Solana, powered by Meteora DBC.",
+  metadataBase: new URL("https://hymet.fun"),
+  openGraph: SHARE_OPEN_GRAPH,
+  twitter: SHARE_TWITTER,
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
