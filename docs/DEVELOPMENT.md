@@ -10,7 +10,7 @@
 
 ```bash
 npm ci                        # install scripts stay off (.npmrc: ignore-scripts=true)
-cp .env.example .env.local
+# create .env.local (see Configuration below)
 npm run db:migrate            # applies migrations/ in order, each in a transaction
 npm run dev                   # http://127.0.0.1:4173
 ```
@@ -20,7 +20,7 @@ npm run dev                   # http://127.0.0.1:4173
 
 ## Configuration
 
-`.env.example` lists the app's variables; the keeper's are described in [KEEPER.md](KEEPER.md). The important ones:
+Put the app's variables in `.env.local`; the keeper's are described in [KEEPER.md](KEEPER.md). The important ones:
 
 | Variable | Purpose |
 |---|---|

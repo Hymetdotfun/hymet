@@ -12,11 +12,23 @@ figures below come from the SDK's own swap simulator applied to that config.
 | Start market cap | 33.5 HYPE (price 3.35 × 10⁻⁸ HYPE per token) |
 | Graduation market cap | 447 HYPE (price 4.47 × 10⁻⁷ HYPE per token) |
 | Trading fee | 0.25%–3%, default 1%, flat (no dynamic fee), collected in HYPE |
-| After graduation | DAMM v2 with the same flat fee, collected in HYPE; liquidity 100% permanently locked |
+| After graduation | DAMM v2 with the same flat fee, collected in HYPE; liquidity 100% permanently locked. Not yet run on Mainnet |
 | Migration fee / pool creation fee | 0 / 0 |
 
 The caps are fixed in HYPE: graduation happens when the curve holds the threshold amount of HYPE, whatever HYPE's USD
 price is. Only the USD values move.
+
+## Where a trading fee goes
+
+On a DBC pool, Meteora takes 20% of the trading fee first. HYMET receives 20% of the rest, and the creator and holders
+share the remaining 80% as chosen at launch. Meteora's protocol sets its own share on DAMM v2 pools.
+
+| From a 1 HYPE trading fee on DBC | HYPE |
+|---|---|
+| Meteora | 0.20 |
+| HYMET | 0.16 |
+| Creator, at a 50/50 split | 0.32 |
+| Holders, at a 50/50 split | 0.32 |
 
 ## Market cap is not money raised
 

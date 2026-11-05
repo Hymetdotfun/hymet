@@ -38,10 +38,10 @@ flowchart TB
 
 | Component | Where | Role |
 |---|---|---|
-| Web app | `app/`, `components/` | Launch form, explore, token pages with DBC/DAMM v2 trading, fees and rewards, creator dashboard, owner console |
+| Web app | `app/`, `components/` | Launch form, explore, token pages with DBC/DAMM v2 trading, fees and rewards, creator dashboard, owner console (not served on the public site) |
 | API routes | `app/api/` | Reservations, launch confirmation, metadata upload, fee and claim transactions, graduation requests, RPC proxy |
 | Core library | `lib/` | Curve config (`config.ts`), transaction building and review (`transactions.ts`, `wallet-operation.ts`), DBC/DAMM v2 swaps and fees, distributor client, keeper logic, indexer |
-| Database | `migrations/` | Launches, pools, reservations, trades and market snapshots, fee accruals and settlements, payout epochs and entitlements, graduation requests |
+| Database | `migrations/` | Launches, pools, reservations, market snapshots, fee accruals and settlements, payout epochs and entitlements, graduation requests |
 | Distributor program | `programs/hymet-rewards-distributor` | On-chain fee custody and split; see [DISTRIBUTOR.md](DISTRIBUTOR.md) |
 | Keeper | `scripts/holder-rewards-keeper.ts`, `lib/holder-keeper.ts` | Migration, canonical pool registration, settlement, holder snapshots and payouts; see [KEEPER.md](KEEPER.md) |
 | Graduation watcher | `scripts/graduation-watcher.mjs` | Runs the keeper for a mint the moment its curve completes (PostgreSQL `LISTEN hymet_graduation`) |
@@ -60,7 +60,7 @@ Every user transaction follows the same path:
    swaps and fee claims accept assertion instructions from the Lighthouse program, which Phantom may add, when every
    reviewed instruction, account permission, fee payer, blockhash and compute setting is unchanged (`lib/wallet-guards.ts`).
    Owner operations and transactions another key has already signed stay byte-for-byte. Every
-   signature to verify. Any change (for example a wallet-inserted fee instruction) aborts before broadcast, and the
+   signature must verify. Any change (for example a wallet-inserted fee instruction) aborts before broadcast, and the
    returned signature is journaled so a retry first checks its on-chain status.
 5. **Simulate again, send once, confirm.** No automatic re-sends of an ambiguous broadcast.
 
@@ -68,8 +68,8 @@ Swap, claim, fee and owner transactions set an explicit compute-unit price, so t
 
 ## Network gates
 
-Mainnet transactions are off unless **both** `NEXT_PUBLIC_ENABLE_MAINNET` (browser) and `ENABLE_MAINNET` (server)
-are `true`; a mismatch disables them. Further gates:
+The web app's Mainnet transactions are off unless **both** `NEXT_PUBLIC_ENABLE_MAINNET` (browser) and `ENABLE_MAINNET`
+(server) are `true`; a mismatch disables them. Further gates:
 
 | Gate | Effect when off |
 |---|---|
@@ -78,7 +78,9 @@ are `true`; a mismatch disables them. Further gates:
 | `HYMET_HOLDER_PAYOUTS_VERIFIED`, `NEXT_PUBLIC_HYMET_HOLDER_REWARDS` | Holder allocations are not offered and not described as automatic |
 | Keeper `--send` | The keeper only plans and simulates |
 
-Reservations and metadata uploads are refused while launches are closed. A local Mainnet-fork mode
+Reservations, launch confirmation, metadata uploads, creator claim building and the RPC proxy are refused while launches
+are closed. The keeper reads its own environment, so it can keep operating existing distributor tokens while the web app
+is closed; see [KEEPER.md](KEEPER.md). A local Mainnet-fork mode
 ([LOCAL-TEST-NETWORK.md](LOCAL-TEST-NETWORK.md)) can never fall back to Mainnet.
 
 ## Trust boundaries
@@ -87,7 +89,7 @@ Reservations and metadata uploads are refused while launches are closed. A local
 |---|---|---|
 | Creator | Choose name, ticker, fee (0.25–3%) and creator/holder split at launch; claim creator fees | Change the split later, withdraw liquidity, mint more supply |
 | HYMET server | Build and simulate transactions, index data | Sign for users; move user funds |
-| Keeper key | Fund and close holder payout rounds from HYPE already collected for holders; register the canonical DAMM v2 pool | Touch HYMET's or creators' shares, liquidity, or anything outside the holder pool |
+| Keeper key | Fund and close holder payout rounds from HYPE already collected for holders, choosing each round's recipients and amounts; register the canonical DAMM v2 pool | Touch HYMET's or creators' shares, liquidity, or anything outside the holder pool |
 | Upgrade authority | Upgrade the distributor, rotate the keeper key | Bypass the program's rules without an upgrade (an upgrade is visible on-chain) |
 | Meteora | Operate DBC and DAMM v2, take its protocol fee share | — |
 

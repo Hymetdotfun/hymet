@@ -5,9 +5,13 @@ graduated curve, registering the canonical DAMM v2 pool, collecting fees, and pa
 
 ```bash
 npm run rewards:keeper                                  # plan and simulate only
-npm run rewards:keeper -- --send                        # broadcast (Mainnet needs every gate open)
+npm run rewards:keeper -- --send                        # broadcast (needs the keeper's own Mainnet settings on)
 npm run rewards:keeper -- --send --payout-interval-minutes=15 --min-payout=<base units>
 ```
+
+The keeper reads its own environment, separate from the web app's. In production its Mainnet settings and `--send` are
+on, so it keeps settling fees, paying rounds and migrating completed curves for existing distributor tokens while the web
+app's launches, trading and claims are closed.
 
 ## One run, per distributor token
 
@@ -33,7 +37,7 @@ Every step resumes from chain state, so a failed or interrupted run is simply fi
 - **Settlement** is skipped when nothing is collectible. Up to 6 settlements run per token per run, so extra
   positions someone adds to the fee pool cannot exhaust the keeper's SOL.
 - **Snapshots** run at most once per `--payout-interval-minutes` (default 15, measured from the last snapshot's block time) per token, while migration and settlement
-  run on every tick.
+  run on every tick. A token's first payout has no waiting period.
 - **SOL guard.** A round is funded only if the keeper holds its planned fees, new holder-account rent and epoch rent,
   plus 0.005 SOL of headroom.
 - **Transactions** carry a priority fee (`HYMET_KEEPER_PRIORITY_MICROLAMPORTS`, default 20,000) and are rebroadcast
@@ -91,6 +95,8 @@ keeper, so a holder must be owed at least 0.05 HYPE before the keeper creates on
 
 ### Wallets that sold
 
+This path has been simulated, but not yet paid on Mainnet.
+
 The program requires a token balance above zero in every payout entry and cannot read past balances. A wallet that no
 longer holds is paid with its true balance at the snapshot that allocated its carry, under the same minimums. Before
 paying, the keeper reads that snapshot's hash from the confirmed funding transaction, recomputes it from the stored
@@ -105,6 +111,30 @@ and refuses unless they reproduce the on-chain hash.
 
 ## RPC
 
-The holder snapshot is a `getProgramAccounts` query on the SPL Token program filtered by mint. The public Mainnet
-endpoint serves it for HYMET-sized tokens; a dedicated provider (for example Helius or Triton) is the upgrade path for
-larger holder sets or stricter rate limits. Set `HYMET_KEEPER_RPC_URL`.
+The holder snapshot is a `getProgramAccounts` query on the SPL Token program filtered by mint. Public endpoints may
+limit or refuse this query, so use a dedicated provider and set `HYMET_KEEPER_RPC_URL`. Production uses a dedicated
+provider.
+
+## Verification status
+
+**Verified on Mainnet**, with real HYPE on HYMET's own test tokens:
+
+- Launches through the distributor (50/50 split, at 1% and 2% trading fees) and the native route
+- Buying and selling on Meteora DBC with Phantom
+- Keeper settlement of DBC fees, including the 20% HYMET share and the creator and holder split
+- Creator claims from the distributor
+- Funded holder payouts to wallets that already had a HYPE account: one round on each of two tokens
+- Recording carried amounts for wallets below their minimum, with original balances proven against the on-chain snapshot
+- Exact reconciliation of chain state, database records and wallet payments
+
+**Devnet, local validator or tests only**, not yet run on Mainnet:
+
+- Graduation, DBC-to-DAMM v2 migration and canonical pool registration, at a 1% fee only
+- DAMM v2 trading and DAMM v2 fee settlement
+- Any distributor split other than 50/50, including 0% creator / 100% holders
+- Repeated payout rounds on one token at the 15-minute interval, and a carried amount growing until it is paid
+- Keeper-created HYPE accounts at the 0.05 HYPE minimum
+- Paying carried amounts to wallets that have sold (simulated only)
+- Native-route creator claims and platform claims
+
+Phantom is the only wallet tested in any environment.

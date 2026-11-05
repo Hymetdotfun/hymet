@@ -49,6 +49,9 @@ and checked on-chain, so traders can compare launches like for like:
 Thresholds are fixed in HYPE, so a launch graduates on the same HYPE amount whatever HYPE's USD price is.
 [Launch economics](docs/LAUNCH-ECONOMICS.md) has the exact curve figures.
 
+The website, [hymet.fun](https://hymet.fun), is public. Launches, trading and claims through it are not open yet and show
+Launching Soon.
+
 ## How a launch works
 
 ```mermaid
@@ -58,6 +61,7 @@ sequenceDiagram
     participant A as HYMET app
     participant DBC as Meteora DBC
     participant K as Keeper
+    participant H as HYMET distributor
     participant D as DAMM v2
     C->>A: Name, ticker, artwork, fee, split
     A->>A: Record the launch (wallet-signed, names need not be unique)
@@ -65,13 +69,19 @@ sequenceDiagram
     C->>DBC: Sign: create token, curve config and pool (+ optional first buy)
     A->>A: Verify on-chain state, index the launch
     Note over DBC: Traders buy and sell on the curve, fees accrue in HYPE
+    K->>H: Settle DBC fees: 20% HYMET, creator and holder shares
+    K->>H: Fund a payout round, push HYPE to holders who reached the minimum
+    C->>H: Claim the creator share
     DBC-->>A: Curve complete (96.07 HYPE in the pool)
     A->>K: Graduation request (instant, via Postgres NOTIFY)
     K->>DBC: Migrate
     DBC->>D: Liquidity moves to DAMM v2, LP positions permanently locked
-    K->>D: Register the canonical pool, settle fees
+    K->>H: Register the canonical pool, settle DAMM v2 fees
     Note over D: Trading continues on DAMM v2, fees keep flowing
 ```
+
+The distributor steps apply to launches with a holder share. In a 100% creator launch, Meteora pays HYMET and the creator
+directly. Graduation and DAMM v2 have not yet run on Mainnet; see [What has been verified](#what-has-been-verified-on-mainnet).
 
 ## Where the fees go
 
@@ -89,12 +99,13 @@ flowchart LR
     X --> HO[Holders: the rest, paid automatically]
 ```
 
-HYMET runs in two modes:
+Each launch takes one of two on-chain routes, decided by its split. Production offers both; public launches are not open
+yet.
 
-| Mode | Status | How the 80% is handled |
+| Route | Used when | How the 80% is handled |
 |---|---|---|
-| **Native split** | Active | Meteora pays HYMET (20%) and the creator (80%) directly; after graduation each owns a permanently locked LP position |
-| **Distributor** | Deployed and initialized; verified in private Mainnet testing; public launches not yet open | All fees go to the HYMET distributor program, which pays HYMET 20%, lets the creator claim their share and pushes the holders' share to holders about every 15 minutes, once amounts reach the payout minimum |
+| **Native split** | The creator keeps 100% of the 80% | Meteora pays HYMET (20%) and the creator (80%) directly; after graduation each owns a permanently locked LP position |
+| **Distributor** | The launch has any holder share | All fees go to the HYMET distributor program, which pays HYMET 20% and lets the creator claim their share. The keeper pushes the holders' share at most every 15 minutes per token, once a wallet reaches its payout minimum |
 
 The distributor holds no keys of its own: its fee pool is a program-derived address that can only claim Meteora fees
 and pay them out by the fixed rules. See [Distributor program](docs/DISTRIBUTOR.md).
@@ -108,7 +119,7 @@ flowchart TB
       UI[HYMET web app<br/>Next.js 16 / React 19]
     end
     subgraph Server["HYMET server"]
-      API[API routes<br/>launch, fees, graduation, owner]
+      API[API routes<br/>launch, fees, graduation, RPC proxy]
       DB[(PostgreSQL<br/>launches, fees, epochs)]
       IDX[Distributor indexer]
       KEEP[Payout keeper<br/>every 5 min]
@@ -124,8 +135,11 @@ flowchart TB
     UI <--> W
     UI --> API
     API --> DB
-    W -- signs --> DBC
-    W -- signs --> DAMM
+    UI -- signed tx via RPC proxy --> DBC
+    UI -- signed tx via RPC proxy --> DAMM
+    UI -- signed claim via RPC proxy --> DIST
+    DIST -- claims fees --> DBC
+    DIST -- claims fees --> DAMM
     API -- reads --> DBC
     API -- reads --> DAMM
     WATCH -- runs --> KEEP
@@ -142,8 +156,11 @@ flowchart TB
 - **The app never holds user keys.** The server builds and simulates unsigned transactions; Phantom signs; the app
   checks the signed message against the one you reviewed before it is sent. It must be byte-for-byte identical, except
   that swaps and fee claims accept Lighthouse assertions added by Phantom; every reviewed instruction must stay unchanged.
-- **The keeper holds one narrow key**: the distributor's snapshot authority. It can fund holder payout rounds from
-  fees already collected for holders, and nothing else. See [Keeper](docs/KEEPER.md).
+- **The keeper holds one narrow key**: the distributor's snapshot authority. It can register the canonical DAMM v2 pool,
+  and fund and close holder payout rounds from fees already collected for holders. It cannot reach HYMET's or creators'
+  shares or the liquidity. The program checks payments against the round's Merkle root, not token balances, so holders
+  rely on the keeper to compute recipients correctly. See [Keeper](docs/KEEPER.md).
+- **Operator routes stay off the public site.** The owner console and test-network routes are not served at hymet.fun.
 
 ## On-chain addresses
 
@@ -195,14 +212,15 @@ Requirements: Node.js 20 or newer (production runs 24), PostgreSQL 16, and (for 
 
 ```bash
 npm ci                       # .npmrc keeps install scripts off (ignore-scripts=true)
-cp .env.example .env.local   # fill in DATABASE_URL and the public addresses; Mainnet stays off by default
+# create .env.local with DATABASE_URL and the public addresses (see docs/DEVELOPMENT.md); Mainnet stays off by default
 npm run db:migrate
 npm run dev                  # http://127.0.0.1:4173
 npm test                     # Vitest
 npm run typecheck && npm run lint
 ```
 
-Mainnet transactions stay disabled until both `NEXT_PUBLIC_ENABLE_MAINNET` and `ENABLE_MAINNET` are `true`. For
+The web app's Mainnet transactions stay disabled until both `NEXT_PUBLIC_ENABLE_MAINNET` and `ENABLE_MAINNET` are
+`true`. The keeper has its own settings; see [Keeper](docs/KEEPER.md). For
 end-to-end testing against a local Mainnet fork, see [Local test network](docs/LOCAL-TEST-NETWORK.md);
 [Development](docs/DEVELOPMENT.md) covers the rest.
 
@@ -229,11 +247,27 @@ audit. Trading launched tokens carries market risk; nothing here is financial ad
 
 ### What has been verified on Mainnet
 
-| Flow | Evidence |
-|---|---|
-| Launch with a creator/holder split and first buy, DBC settlement, automatic holder payout, creator claim, and a sell through Phantom | Private Mainnet test |
-| Graduation to DAMM v2, DAMM v2 trading and settlement | **Devnet and local validator only**, at a 1% fee. Not yet run on Mainnet, and no other fee rate has graduated |
-| Buying through the app and native-split creator and platform claims through Phantom | Not yet tested on Mainnet |
+**Verified on Mainnet**, with real HYPE on HYMET's own test tokens:
+
+- Launches through the distributor (50/50 split, at 1% and 2% trading fees) and the native route
+- Buying and selling on Meteora DBC with Phantom
+- Keeper settlement of DBC fees, including the 20% HYMET share and the creator and holder split
+- Creator claims from the distributor
+- Funded holder payouts to wallets that already had a HYPE account: one round on each of two tokens
+- Recording carried amounts for wallets below their minimum, with original balances proven against the on-chain snapshot
+- Exact reconciliation of chain state, database records and wallet payments
+
+**Devnet, local validator or tests only**, not yet run on Mainnet:
+
+- Graduation, DBC-to-DAMM v2 migration and canonical pool registration, at a 1% fee only
+- DAMM v2 trading and DAMM v2 fee settlement
+- Any distributor split other than 50/50, including 0% creator / 100% holders
+- Repeated payout rounds on one token at the 15-minute interval, and a carried amount growing until it is paid
+- Keeper-created HYPE accounts at the 0.05 HYPE minimum
+- Paying carried amounts to wallets that have sold (simulated only)
+- Native-route creator claims and platform claims
+
+Phantom is the only wallet tested in any environment.
 
 ## License
 

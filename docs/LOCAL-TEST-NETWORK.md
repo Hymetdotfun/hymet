@@ -31,6 +31,8 @@ A guarded development mode that runs the HYMET app against a loopback `solana-te
 
 ## Creator/holder splits on localnet
 
+The `work/` scripts and `testnet-setup.sh` named below live on the private build host and are not part of this repository.
+
 - `scripts/test-network-distributor.ts` (loopback RPC only, refuses the Mainnet genesis) initializes the deployed distributor with local seed keys:
   - upgrade authority: the validator trader;
   - platform: `HYMET LOCAL VALIDATOR ONLY PLATFORM`;
@@ -47,7 +49,7 @@ A guarded development mode that runs the HYMET app against a loopback `solana-te
   - builds and starts the app.
 
   Restart the keeper timer afterwards.
-- End-to-end accounting check: `node work/e2e-verify.cjs`. It is read-only and compares the chain (fee pools, vaults, per-transaction HYPE deltas) with the test DB. The 2026-11-01 run of 73/27, 50/50 and 0/100 passed 34/34.
+- End-to-end accounting check: `node work/e2e-verify.cjs`. It is read-only and compares the chain (fee pools, vaults, per-transaction HYPE deltas) with the test DB. The 2026-11-01 run of 73/27, 50/50 and 0/100 passed 34/34, on a build that predates the Mainnet deployment.
 
 ## Graduation (DBC → DAMM v2)
 

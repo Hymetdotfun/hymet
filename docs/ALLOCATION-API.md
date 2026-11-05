@@ -17,10 +17,10 @@ HYMET's 20% platform share is fixed. The creator chooses how the remaining **80%
 ```json
 {
   "field": "values.creatorShare",
-  "min": 100, "max": 100, "step": 1, "default": 100,
+  "min": 0, "max": 100, "step": 1, "default": 100,
   "platformBps": 2000,
-  "launchMode": "native-split",
-  "holderAllocationsEnabled": false
+  "launchMode": "distributor",
+  "holderAllocationsEnabled": true
 }
 ```
 
@@ -48,7 +48,7 @@ HYMET's 20% platform share is fixed. The creator chooses how the remaining **80%
 | `GET /api/tokens` (each token) | `allocation` |
 | `GET /api/creator-launches?wallet=` (each launch) | `allocation` |
 
-Existing launches (HYTEST, DOGE, HYPAD and every native-split token) report their original 100/0.
+Existing native-route launches report their original 100/0.
 
 ## Enforcement (backend; nothing for the frontend to add)
 
@@ -56,10 +56,12 @@ Existing launches (HYTEST, DOGE, HYPAD and every native-split token) report thei
 - Distributor launches create the fee pool in the same transaction as the DBC pool with `creator_bps_of_remaining = creatorShare × 100`. The program has no instruction to change it; confirm re-reads it on-chain before persisting.
 - Every DBC and DAMM v2 fee settlement splits on-chain: 20% HYMET first, creator rounded down, holders take the remainder (no overdistribution). The indexer rejects any settlement event that differs from the stored split.
 
-## Verification (2026-11-01)
+## Pre-deployment verification (2026-11-01)
+
+These runs predate the Mainnet deployment and used an earlier reviewed build, not the deployed binary `fda10de4…3e7b`.
+On Mainnet, only a 50/50 distributor split has been run; see [DISTRIBUTOR.md](DISTRIBUTOR.md#verification-status).
 
 - Unit tests (`tests/flexible-allocation.test.ts` and others): 100/0, 73/27, 50/50, 1/99 and 0/100. They cover input validation, exact bps, splits of 0 to 2^64−1 base units with no overdistribution, indexer agreement for DBC and DAMM v2 sources, fee-pool instruction encoding, round-tripping persisted records (including legacy 100/0), the policy gate, the keeper paying at 73/27 and 1/99, and no fallback to 100% creator.
-- Real-validator lifecycle with Mainnet-dumped DBC/DAMM v2, authentic graduation, and the **unmodified reviewed binary** `f0ec833a…7105`. Run on an isolated build host with `HYMET_LIFECYCLE_CREATOR_BPS`:
+- Real-validator lifecycle with Mainnet-dumped DBC/DAMM v2, authentic graduation, and the then-current reviewed binary `f0ec833a…7105`. Run on an isolated build host with `HYMET_LIFECYCLE_CREATOR_BPS`:
   - **7300:** 52 PASS. A DBC settlement of 8,000,000 split into 1,600,000 HYMET, 4,672,000 creator and 1,728,000 holders. DAMM v2 settlement, creator claim and holder push payout also passed.
   - **100:** 52 PASS. The same settlement split into 1,600,000 HYMET, 64,000 creator and 6,336,000 holders. DAMM v2 settlement, creator claim and holder push payout also passed.
-- The distributor program is unchanged: same SHA-256, size, rent and deployment readiness.
