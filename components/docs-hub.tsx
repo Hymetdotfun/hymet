@@ -61,7 +61,7 @@ function Introduction() {
           <span className="dh-eyebrow">HYMET DOCUMENTATION</span>
           <h1 id="docs-title"><span>Build With</span><em>HYPE.</em></h1>
           <p className="dh-intro-subtitle">Everything you need to launch, trade, and understand tokens on HYMET.</p>
-          <p className="dh-intro-body">HYMET is a HYPE-paired token launchpad on Solana, powered by Meteora. Use these guides to prepare a token, understand its market, and review how fees and migration work.</p>
+          <p className="dh-intro-body">HYMET is a HYPE-paired token launchpad on Solana, powered by Meteora. Use these guides to prepare a token, understand its market, and review how fees, holder rewards, and migration work.</p>
           <div className="dh-hero-actions"><Link className="dh-primary-button" href="/launch">Create a Token <span aria-hidden="true">→</span></Link><Link className="dh-secondary-button" href="/explore">Explore Tokens</Link></div>
         </div>
         <PlanetArt />
@@ -72,7 +72,7 @@ function Introduction() {
       </section>
       <section className="dh-workflow" aria-labelledby="workflow-title">
         <div className="dh-section-heading"><div><span className="dh-eyebrow">THE BASICS</span><h2 id="workflow-title">From launch to trade</h2></div><p>One clear path for creators and traders.</p></div>
-        <ol>{[["01", "Launch", "Prepare your token and approve the launch in Phantom."], ["02", "Trade", "Trade against HYPE through the verified Meteora pool."], ["03", "Graduate", "The pool may migrate from DBC to DAMM v2 when conditions are met."], ["04", "Earn", "Eligible fee owners claim fees accrued to their position."]].map(([number, title, text]) => <li key={number}><span>{number}</span><div><strong>{title}</strong><p>{text}</p></div></li>)}</ol>
+        <ol>{[["01", "Launch", "Prepare your token and approve the launch in Phantom."], ["02", "Trade", "Trade against HYPE through the verified Meteora pool."], ["03", "Graduate", "The pool may migrate from DBC to DAMM v2 when conditions are met."], ["04", "Earn", "Creators claim their share, and holders receive eligible HYPE payouts automatically."]].map(([number, title, text]) => <li key={number}><span>{number}</span><div><strong>{title}</strong><p>{text}</p></div></li>)}</ol>
       </section>
       <aside className="dh-note"><span aria-hidden="true">i</span><p>HYMET only reports transactions, pool states, and market values it can verify. A page being available does not mean every Mainnet feature is enabled.</p></aside>
     </>
