@@ -3,7 +3,19 @@ import { SiteFooter, SiteNav } from "../components/site-nav";
 import { ScrollReveals } from "../components/scroll-reveals";
 import { WalletAppProvider } from "../components/wallet-app-provider";
 import { TestNetworkBanner } from "../components/test-network-banner";
-export const metadata = { title: "HYMET — Where HYPE Launches", description: "A HYPE-only token launchpad on Solana, powered by Meteora DBC." };
+export const metadata = { title: "HYMET — Where HYPE Launches", description: "A HYPE-only token launchpad on Solana, powered by Meteora DBC.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-180x180.png", sizes: "180x180", type: "image/png" },
+      { url: "/favicon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/favicon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
