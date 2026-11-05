@@ -794,9 +794,13 @@ function Launcher() {
                     <span className={wallet.publicKey ? "wallet-status-dot connected" : "wallet-status-dot"} />
                     {wallet.publicKey
                       ? `Phantom connected · ${wallet.publicKey.toBase58().slice(0, 4)}…${wallet.publicKey.toBase58().slice(-4)}`
-                      : "Connect Phantom from the navbar to continue."}
+                      : mainnetTransactionsEnabled() ? "Connect Phantom from the navbar to continue." : "Token creation is not open yet."}
                   </div>
-                  {!plan ? (
+                  {!plan && !mainnetTransactionsEnabled() ? (
+                    <button className="primary summary-cta" disabled>
+                      Launching Soon
+                    </button>
+                  ) : !plan ? (
                     <button
                       className="primary summary-cta"
                       disabled={busy || imageProcessing || !wallet.connected || allocationPolicyState.status !== "ready" || pending?.state === "pending"}
@@ -816,7 +820,7 @@ function Launcher() {
                         </button>
                       ) : (
                         <button className="primary summary-cta" disabled>
-                          Mainnet launch is unavailable
+                          Launching Soon
                         </button>
                       )}
                       {state === "Recovery required" && (

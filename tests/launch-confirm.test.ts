@@ -6,6 +6,8 @@ afterEach(() => vi.unstubAllEnvs());
 
 it("keeps confirmed registration unavailable without PostgreSQL and avoids RPC", async () => {
   vi.stubEnv("DATABASE_URL", "");
+  vi.stubEnv("NEXT_PUBLIC_ENABLE_MAINNET", "true");
+  vi.stubEnv("ENABLE_MAINNET", "true");
   const fetcher = vi.spyOn(globalThis, "fetch");
   const response = await POST(
     new NextRequest("http://localhost/api/launch/confirm", {

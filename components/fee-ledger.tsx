@@ -6,7 +6,7 @@ import { Transaction } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import { executeWalletOperation } from '../lib/wallet-operation';
 import { EarningsCard } from './earnings-card';
-import { claimNetworkLabel } from '../lib/app-network';
+import { claimNetworkLabel, mainnetTransactionsEnabled } from '../lib/app-network';
 import type { LaunchStatus } from '../lib/launch-status';
 
 type Ledger = {
@@ -155,7 +155,7 @@ function FeeLedgerWallet() {
                 stage={`${stage} · ${creatorPct}% creator / ${holderPct}% holders`}
                 amount={token.creatorBps > 0 ? (claimable === undefined ? undefined : `${formatHype(claimable, true).replace(" HYPE", "")} HYPE`) : "Automatic"}
                 note={token.creatorBps > 0 ? `Your creator share, settled on-chain on ${claimNetworkLabel("mainnet-beta")}. Holders are paid by the keeper and never claim.` : "The full creator share goes to holders through keeper payouts. There is nothing to claim."}
-                action={token.creatorBps > 0 ? { label: hasClaim ? "Claim Creator Fees" : "No creator fees yet", disabled: busy || !hasClaim, onClick: () => void claimCreatorFees(token.mint) } : undefined}
+                action={token.creatorBps > 0 ? { label: !mainnetTransactionsEnabled() ? "Launching Soon" : hasClaim ? "Claim Creator Fees" : "No creator fees yet", disabled: busy || !hasClaim || !mainnetTransactionsEnabled(), onClick: () => void claimCreatorFees(token.mint) } : undefined}
                 advanced={
                   <div className="damm-technical-grid">
                     <div><span>Token mint</span><code>{token.mint}</code></div>

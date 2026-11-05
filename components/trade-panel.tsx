@@ -58,7 +58,7 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker, tokenSta
     return () => { alive = false; window.clearTimeout(timer); };
   }, [transitioning, mint, router]);
   const tradable = Boolean(pool) && poolStatus === "active" && (!damm || Boolean(dbcPool));
-  const blocked = !enabled ? "Mainnet transactions are disabled in this build." : !tradable ? (poolStatus === "migrated" ? "This token has graduated; its DAMM v2 pool is being verified. Refresh in a moment." : damm ? "The DAMM v2 pool cannot be verified without its launch pool." : "No active DBC pool is verified for this token.") : !platform ? "Platform fee wallet is not configured." : "";
+  const blocked = !enabled ? "Trading is not open yet." : !tradable ? (poolStatus === "migrated" ? "This token has graduated; its DAMM v2 pool is being verified. Refresh in a moment." : damm ? "The DAMM v2 pool cannot be verified without its launch pool." : "No active DBC pool is verified for this token.") : !platform ? "Platform fee wallet is not configured." : "";
 
   const [balanceTick, setBalanceTick] = useState(0);
   const refreshBalances = useCallback(() => setBalanceTick((n) => n + 1), []);
@@ -164,7 +164,7 @@ function TradeForm({ mint, pool, poolStatus, protocol, dbcPool, ticker, tokenSta
       {livePreview && <small role="status" className={livePreview.error ? "error" : ""}>{livePreview.text}</small>}
       <label>Max slippage · %<input type="number" min="0.01" max="50" step="0.1" value={slippage} disabled={busy || !!blocked} onChange={(e) => { setSlippage(e.target.value); reset(); }} /></label>
       {publicKey && <small>Balance: {balances.owner === owner && balances.hype ? formatUnits(balances.hype.raw, balances.hype.decimals) : "…"} HYPE · {balances.owner === owner && balances.token ? formatUnits(balances.token.raw, balances.token.decimals) : "…"} {ticker.toUpperCase()}</small>}
-      {blocked ? <small>{blocked}</small> : !publicKey ? (
+      {!enabled ? <><button type="button" className="primary" disabled>Launching Soon</button><small>{blocked}</small></> : blocked ? <small>{blocked}</small> : !publicKey ? (
         <small>Connect Phantom from the navigation to buy or sell.</small>
       ) : !plan ? (
         <button type="button" className="primary" disabled={busy || !value || Number(value) <= 0} onClick={() => void review()}>{busy ? "Preparing…" : `Review ${side}`}</button>

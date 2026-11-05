@@ -8,7 +8,7 @@ import { bps, curve, distributorCurve, units, type Inputs, validate } from "../.
 import { distributorAddresses, verifyDistributorDeployment } from "../../../../lib/distributor-engine";
 import { checkNetwork, configuredPlatformFeeRecipient, verifyLaunch } from "../../../../lib/transactions";
 import { distributorAllowed } from "../../../../lib/launch-mode";
-import { testNetworkRequested } from "../../../../lib/app-network";
+import { mainnetTransactionsEnabled, testNetworkRequested } from "../../../../lib/app-network";
 import { serverConnection } from "../../../../lib/server-rpc";
 import { isTestFileUrl } from "../../../../lib/test-network-files";
 export const runtime = "nodejs";
@@ -66,6 +66,8 @@ async function readVerifiedMetadata(uri: string, artworkUri: string, values: Inp
 
 export async function POST(req: NextRequest) {
   if (!sameOrigin(req)) return json("Origin denied", 403);
+  // No launch can be registered while launches are closed, whatever was sent.
+  if (!mainnetTransactionsEnabled()) return json("Launches are not open yet", 403);
   if (req.headers.get("content-type")?.split(";")[0] !== "application/json")
     return json("JSON request required", 415);
   if (Number(req.headers.get("content-length")) > 32_768)

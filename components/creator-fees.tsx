@@ -245,7 +245,7 @@ function FeePanel({
           setPools(knownCreatorPools(developmentStorage(), network, owner));
         }
       })}>Load / refresh fees</button>
-      {!enabled && <p className="creator-claim-note">{networkLabel}. No claim transaction can be submitted.</p>}
+      {!enabled && <p className="creator-claim-note">{testNetworkRequested() ? `${networkLabel}. No claim transaction can be submitted.` : "Launching Soon. Claims are not open yet."}</p>}
       {view && <div className="creator-claim-technical">
         {row("Token mint", view.mint)}
         {row("DBC pool", view.pool)}

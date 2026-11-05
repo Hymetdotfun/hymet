@@ -114,7 +114,7 @@ export function claimNetworkLabel(network: string) {
   if (network === "mainnet-beta")
     return mainnetTransactionsEnabled()
       ? "Solana Mainnet"
-      : "Solana Mainnet · claims disabled";
+      : "Solana Mainnet · claims launching soon";
   if (network === "devnet") return "Solana Devnet";
   return "Network unavailable · claims blocked";
 }

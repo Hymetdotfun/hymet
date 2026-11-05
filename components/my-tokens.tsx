@@ -296,7 +296,7 @@ export default function MyTokens({
         </div>
       ) : !enabled ? (
         <p className="fine">
-          Mainnet is disabled by the existing network gate.
+          Launching Soon. Token tools open when launches begin.
         </p>
       ) : (
         <>

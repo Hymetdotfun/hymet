@@ -163,7 +163,7 @@ export default function DammFees({ dbc, network, tokenName, tokenSymbol, imageUr
             amount={hypeAmount === undefined ? undefined : `${hypeAmount} HYPE`}
             note={!view.supported ? "Claims are unavailable for this pool’s token program or fee mode." : record?.state === "pending" ? "A claim is pending. Check its saved signature in Advanced details." : hasFees ? `Verified from your on-chain DAMM v2 position on ${networkLabel}.` : "No position fees yet."}
             action={reviewing ? undefined : {
-              label: hasFees ? "Claim Creator Fees" : "No fees to claim",
+              label: !enabled ? "Launching Soon" : hasFees ? "Claim Creator Fees" : "No fees to claim",
               disabled: busy || !enabled || !view.supported || !hasFees || record?.state === "pending",
               onClick: () => act(async () => {
                 const pending = dammRecord(developmentStorage(), network, owner!);

@@ -5,7 +5,7 @@ import { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk
 import { query } from '../../../../lib/db';
 import { sameOrigin, limitedBody, publicError } from '../../../../lib/http';
 import { HYPE_MINT } from '../../../../lib/quote-assets';
-import { expectedGenesis, serverRpcUrl } from '../../../../lib/app-network';
+import { expectedGenesis, mainnetTransactionsEnabled, serverRpcUrl } from '../../../../lib/app-network';
 import { WALLET_PRIORITY_MICROLAMPORTS, configuredPlatformFeeRecipient } from '../../../../lib/transactions';
 import { distributorAllowed } from '../../../../lib/launch-mode';
 import { creatorDistributorClaim, verifyConfiguredDistributorAuthorities, verifyDistributorDeployment, verifyDistributorPool } from '../../../../lib/distributor-engine';
@@ -15,6 +15,8 @@ export const runtime='nodejs';
 // recovery runs that keeper with its own authority, outside the public interface.
 export async function POST(request:NextRequest) {
   if(!sameOrigin(request)) return NextResponse.json({error:'Origin denied'},{status:403});
+  // No claim transaction is built while the Mainnet switches are off.
+  if(!mainnetTransactionsEnabled()) return NextResponse.json({error:'Claims are not open yet'},{status:403});
   try {
     const body=JSON.parse(new TextDecoder().decode(await limitedBody(request,4096)));
     if(body.action!=='creator') throw Error('Unknown fee action');

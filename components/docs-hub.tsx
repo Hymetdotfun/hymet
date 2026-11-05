@@ -65,7 +65,7 @@ function Introduction() {
         <div className="dh-section-heading"><div><span className="dh-eyebrow">THE BASICS</span><h2 id="workflow-title">From launch to trade</h2></div><p>One clear path for creators and traders.</p></div>
         <ol>{[["01", "Launch", "Prepare your token and approve the launch in Phantom."], ["02", "Trade", "Trade against HYPE through the verified Meteora pool."], ["03", "Graduate", "The pool may migrate from DBC to DAMM v2 when conditions are met."], ["04", "Earn", "Creators claim their share, and holders receive eligible HYPE payouts automatically."]].map(([number, title, text]) => <li key={number}><span>{number}</span><div><strong>{title}</strong><p>{text}</p></div></li>)}</ol>
       </section>
-      <aside className="dh-note"><span aria-hidden="true">i</span><p>HYMET only reports transactions, pool states, and market values it can verify. A page being available does not mean every Mainnet feature is enabled.</p></aside>
+      <aside className="dh-note"><span aria-hidden="true">i</span><p>{process.env.NEXT_PUBLIC_ENABLE_MAINNET === "true" ? "" : "Launching Soon: token creation, trading, and claims are not open yet. "}HYMET only reports transactions, pool states, and market values it can verify. A page being available does not mean every Mainnet feature is enabled.</p></aside>
     </>
   );
 }

@@ -12,6 +12,7 @@ describe('application distributor safeguards',()=>{
   });
   it('builds only creator claims: settlement and migration are keeper-only',async()=>{
     vi.stubEnv('HYMET_DISTRIBUTOR_VERIFIED','true');
+    vi.stubEnv('NEXT_PUBLIC_ENABLE_MAINNET','true');vi.stubEnv('ENABLE_MAINNET','true');
     const fetcher=vi.spyOn(globalThis,'fetch');
     for(const action of ['collect','migrate']) {
       const result=await POST(new NextRequest('http://localhost/api/fees/transaction',{method:'POST',headers:{origin:'http://localhost','content-type':'application/json'},body:JSON.stringify({action,mint:Keypair.generate().publicKey.toBase58(),wallet:Keypair.generate().publicKey.toBase58()})}));
@@ -21,6 +22,7 @@ describe('application distributor safeguards',()=>{
   });
   it('keeps financial transaction construction disabled without owner verification',async()=>{
     vi.stubEnv('HYMET_DISTRIBUTOR_VERIFIED','false');
+    vi.stubEnv('NEXT_PUBLIC_ENABLE_MAINNET','true');vi.stubEnv('ENABLE_MAINNET','true');
     const fetcher=vi.spyOn(globalThis,'fetch');
     const result=await POST(new NextRequest('http://localhost/api/fees/transaction',{method:'POST',headers:{origin:'http://localhost','content-type':'application/json'},body:JSON.stringify({action:'creator',mint:Keypair.generate().publicKey.toBase58(),wallet:Keypair.generate().publicKey.toBase58()})}));
     expect(result.status).toBe(400);expect((await result.json()).error).toContain('not verified');expect(fetcher).not.toHaveBeenCalled();
