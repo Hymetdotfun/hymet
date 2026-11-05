@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DocsCosmicBackground } from "./docs-cosmic-background";
 import { docHref, docsArticles, docsGroups, type DocsArticle, type DocsSection } from "../lib/docs-content";
 
 function SearchIcon() {
@@ -11,16 +12,6 @@ function SearchIcon() {
 
 function Arrow() {
   return <span className="dh-arrow" aria-hidden="true">↗</span>;
-}
-
-function PlanetArt() {
-  return (
-    <div className="dh-planet-art" aria-hidden="true">
-      <div className="dh-planet"><i /></div>
-      <svg viewBox="0 0 440 300" preserveAspectRatio="xMidYMid meet"><ellipse cx="250" cy="152" rx="190" ry="55" transform="rotate(-24 250 152)" /><ellipse cx="250" cy="152" rx="218" ry="76" transform="rotate(-24 250 152)" /></svg>
-      <i className="dh-star" />
-    </div>
-  );
 }
 
 function Sidebar({ activeSlug }: { activeSlug: string }) {
@@ -57,14 +48,14 @@ function Introduction() {
   return (
     <>
       <section className="dh-intro-hero" aria-labelledby="docs-title">
+        <DocsCosmicBackground />
         <div className="dh-intro-copy">
           <span className="dh-eyebrow">HYMET DOCUMENTATION</span>
           <h1 id="docs-title"><span>Build With</span><em>HYPE.</em></h1>
           <p className="dh-intro-subtitle">Everything you need to launch, trade, and understand tokens on HYMET.</p>
           <p className="dh-intro-body">HYMET is a HYPE-paired token launchpad on Solana, powered by Meteora. Use these guides to prepare a token, understand its market, and review how fees, holder rewards, and migration work.</p>
-          <div className="dh-hero-actions"><Link className="dh-primary-button" href="/launch">Create a Token <span aria-hidden="true">→</span></Link><Link className="dh-secondary-button" href="/explore">Explore Tokens</Link></div>
+          <div className="dh-hero-actions"><Link className="dh-primary-button" href="/launch">Create a Token</Link><Link className="dh-secondary-button" href="/explore">Explore Tokens</Link></div>
         </div>
-        <PlanetArt />
       </section>
       <section className="dh-intro-links" aria-labelledby="quick-start-title">
         <div className="dh-section-heading"><div><span className="dh-eyebrow">QUICK START</span><h2 id="quick-start-title">Choose a guide</h2></div></div>
