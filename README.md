@@ -23,6 +23,7 @@
 - [What HYMET is](#what-hymet-is)
 - [How a launch works](#how-a-launch-works)
 - [Where the fees go](#where-the-fees-go)
+- [$HYMET](#hymet)
 - [Architecture](#architecture)
 - [On-chain addresses](#on-chain-addresses)
 - [Verify the deployed program](#verify-the-deployed-program)
@@ -49,8 +50,8 @@ and checked on-chain, so traders can compare launches like for like:
 Thresholds are fixed in HYPE, so a launch graduates on the same HYPE amount whatever HYPE's USD price is.
 [Launch economics](docs/LAUNCH-ECONOMICS.md) has the exact curve figures.
 
-The website, [hymet.fun](https://hymet.fun), is public. Launches, trading and claims through it are not open yet and show
-Launching Soon.
+The website, [hymet.fun](https://hymet.fun), is live on Solana Mainnet. Since 7 November 2026 anyone can launch a token,
+trade and claim creator fees there with Phantom.
 
 ## How a launch works
 
@@ -99,8 +100,7 @@ flowchart LR
     X --> HO[Holders: the rest, paid automatically]
 ```
 
-Each launch takes one of two on-chain routes, decided by its split. Production offers both; public launches are not open
-yet.
+Each launch takes one of two on-chain routes, decided by its split. Production offers both.
 
 | Route | Used when | How the 80% is handled |
 |---|---|---|
@@ -109,6 +109,25 @@ yet.
 
 The distributor holds no keys of its own: its fee pool is a program-derived address that can only claim Meteora fees
 and pay them out by the fixed rules. See [Distributor program](docs/DISTRIBUTOR.md).
+
+## $HYMET
+
+HYMET's own token was launched on HYMET like any other token: a native-split launch with a 2.5% trading fee.
+
+| | |
+|---|---|
+| Mint | [`8QTBDqUVWQjP6KzfrtLkBKhfaFLDenxvqFv2tDkGdMpu`](https://solscan.io/token/8QTBDqUVWQjP6KzfrtLkBKhfaFLDenxvqFv2tDkGdMpu) |
+| Creator (HYMET team wallet) | [`HYKNLVDr4kUQ5hMCEnPKJP3YqLzT2L2Ma6c4NB1gEsun`](https://solscan.io/account/HYKNLVDr4kUQ5hMCEnPKJP3YqLzT2L2Ma6c4NB1gEsun) |
+
+- **Pinned in Explore.** $HYMET is always the first card, with an Official badge. Search and filters still apply to it,
+  and it is never listed twice.
+- **Burn Tracker.** The dashboard shows how much $HYMET has been burned. The mint authority is revoked, so supply can only
+  fall through burns: the total is the original 1,000,000,000 tokens minus the current on-chain supply. Each burn is also
+  indexed once, by transaction and instruction, and figures are shown only when the indexed burns add up exactly to
+  that reduction. Burns signed by the HYMET team wallet are labelled team buyback burns. Transfers to dead wallets are not
+  burns and are not counted.
+- **Buyback & Burn is manual.** HYMET designates its 20% platform allocation for buying back and burning $HYMET. The
+  team does this by hand; nothing in the app, keeper or distributor buys or burns tokens automatically.
 
 ## Architecture
 
@@ -119,7 +138,7 @@ flowchart TB
       UI[HYMET web app<br/>Next.js 16 / React 19]
     end
     subgraph Server["HYMET server"]
-      API[API routes<br/>launch, fees, graduation, RPC proxy]
+      API[API routes<br/>launch, fees, graduation, burns, RPC proxy]
       DB[(PostgreSQL<br/>launches, fees, epochs)]
       IDX[Distributor indexer]
       KEEP[Payout keeper<br/>every 5 min]
@@ -226,6 +245,8 @@ end-to-end testing against a local Mainnet fork, see [Local test network](docs/L
 
 ## Documentation
 
+[CHANGELOG](CHANGELOG.md) lists what changed in each stage, with the commits.
+
 | Document | What it covers |
 |---|---|
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, trust boundaries, transaction safety |
@@ -256,6 +277,8 @@ audit. Trading launched tokens carries market risk; nothing here is financial ad
 - Funded holder payouts to wallets that already had a HYPE account: one round on each of two tokens
 - Recording carried amounts for wallets below their minimum, with original balances proven against the on-chain snapshot
 - Exact reconciliation of chain state, database records and wallet payments
+- The public launch of $HYMET through hymet.fun with Phantom (native route, 2.5% trading fee)
+- Team burns of $HYMET, indexed by the Burn Tracker and matched exactly to the on-chain supply reduction
 
 **Devnet, local validator or tests only**, not yet run on Mainnet:
 
