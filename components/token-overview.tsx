@@ -77,7 +77,7 @@ export function TokenOverview({
   const launched = launchedAt ? new Date(launchedAt) : undefined;
   return (
     <div className="token-overview">
-      <section className="overview-panel" aria-labelledby="overview-fees-title">
+      <div className="overview-panel" role="group" aria-labelledby="overview-fees-title">
         <h3 id="overview-fees-title">Trading Fees</h3>
         {fees ? (
           <>
@@ -89,8 +89,8 @@ export function TokenOverview({
         ) : (
           <p className="overview-note">Fee distribution unavailable for this launch record.</p>
         )}
-      </section>
-      <section className="overview-panel" aria-labelledby="overview-info-title">
+      </div>
+      <div className="overview-panel" role="group" aria-labelledby="overview-info-title">
         <h3 id="overview-info-title">Token Information</h3>
         <dl className="overview-rows">
           <div>
@@ -134,7 +134,7 @@ export function TokenOverview({
             </div>
           )}
         </dl>
-      </section>
+      </div>
     </div>
   );
 }

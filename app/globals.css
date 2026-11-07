@@ -1691,18 +1691,20 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 
 /* Token overview: two compact terminal-style panels of label-value rows. */
 .token-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(20px,3.5vw,44px);padding:4px 18px 18px}
-.overview-panel{min-width:0}
+.panel-card:has(>.token-overview){container-type:inline-size}
+.overview-panel{min-width:0;margin:0;padding:0;border:0;background:none;box-shadow:none}
 .overview-panel h3{margin:0 0 4px;color:#e8f2ee;font-size:12px;font-weight:650;letter-spacing:.1em;text-transform:uppercase}
 .overview-rows{margin:0}
 .overview-rows>div{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid #ffffff0f}
 .overview-rows>div:last-child{border-bottom:0}
 .overview-rows dt{display:grid;gap:3px;min-width:0;color:#a3b9b2;font-size:13px;line-height:1.35}
 .overview-rows dt small{color:#73877f;font-size:11px;line-height:1.4}
-.overview-rows dd{flex:0 1 auto;min-width:0;max-width:62%;margin:0;color:#f3f8f6;font-size:15px;font-weight:620;font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
+.overview-rows dd{flex:0 1 auto;min-width:0;max-width:62%;margin:0;color:#f3f8f6;font-size:15px;font-weight:620;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .overview-panel:first-child .overview-rows:first-of-type>div:first-child dd{color:#36ddb9;font-size:22px;letter-spacing:-.02em}
-.overview-rows dd a{color:#36ddb9;font-size:13px;font-weight:560;text-decoration:none}
+.overview-rows dd a{display:inline-block;max-width:100%;overflow:hidden;color:#36ddb9;font-size:13px;font-weight:560;text-decoration:none;text-overflow:ellipsis;vertical-align:bottom}
 .overview-rows dd a:hover,.overview-rows dd a:focus-visible{text-decoration:underline}
 .overview-rows dd.overview-muted{color:#73877f;font-size:13px;font-weight:450}
 .overview-subhead{margin:16px 0 0;padding-top:12px;border-top:1px solid #ffffff14;color:#36ddb9;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
 .overview-note{margin:10px 0 0;color:#73877f;font-size:11px;line-height:1.55}
-@media(max-width:760px){.token-overview{grid-template-columns:1fr;gap:22px;padding:2px 14px 14px}.overview-rows dd{max-width:58%}}
+@container (max-width:620px){.token-overview{grid-template-columns:1fr;gap:22px}}
+@media(max-width:760px){.token-overview{grid-template-columns:1fr;gap:22px;padding:2px 14px 14px}}
