@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { BurnTracker } from "../../components/burn-tracker";
 
 type CreatorData = {
   indexed: boolean;
@@ -129,6 +130,7 @@ export default function Dashboard() {
           <article><span>Graduated Tokens</span><strong>{data?.indexed ? tokens.filter((token) => token.status.toLowerCase() === "graduated").length : "—"}</strong><small>Confirmed graduated launches</small></article>
         </div>
       </section>
+      <BurnTracker />
       <section className="dashboard-section dashboard-tokens">
         <div className="dashboard-section-heading"><div><h2>My Tokens</h2><span>Confirmed launches for this wallet</span></div></div>
         {tokens.length ? <div className="dashboard-token-grid">{tokens.map((token) => {
