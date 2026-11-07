@@ -1707,4 +1707,4 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 .overview-subhead{margin:16px 0 0;padding-top:12px;border-top:1px solid #ffffff14;color:#36ddb9;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
 .overview-note{margin:10px 0 0;color:#73877f;font-size:11px;line-height:1.55}
 @container (max-width:620px){.token-overview{grid-template-columns:1fr;gap:22px}}
-@media(max-width:760px){.token-overview{grid-template-columns:1fr;gap:22px;padding:2px 14px 14px}.overview-rows dd{max-width:55%;white-space:normal;overflow-wrap:anywhere}.overview-rows dd a{white-space:nowrap}}
+@media(max-width:760px){.token-overview{grid-template-columns:1fr;gap:22px;padding:2px 14px 14px}.overview-rows dd{max-width:55%;white-space:normal;overflow-wrap:break-word}.overview-rows dd a{white-space:nowrap}}
