@@ -7,8 +7,10 @@ import Dashboard from "../app/dashboard/page";
 it("shows the burn tracker loading without any unverified figures", () => {
   const html = renderToStaticMarkup(<BurnTracker />);
   expect(html).toContain("$HYMET Burn Tracker");
-  expect(html).toContain("Team buyback burns");
-  expect(html).toContain("Other on-chain burns");
+  expect(html).toContain("Total Burned");
+  expect(html).toContain("burn-total-value");
+  // One total panel only: the supply, team and other summary cards are gone.
+  expect(html).not.toMatch(/Of original supply|>Team buyback burns<|>Other on-chain burns<|dashboard-metrics/);
   expect(html).toContain("Loading…");
   expect(html).not.toMatch(/\d+(\.\d+)?%/);
   expect(html).toContain("Transfers to dead wallets do not reduce supply and are not counted.");

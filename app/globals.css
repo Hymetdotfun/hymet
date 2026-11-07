@@ -1669,3 +1669,22 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 .fee-distribution{padding:18px 18px 0}.fee-distribution-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.fee-distribution-cards>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:14px 16px;background:#0a180f;border:1px solid #244430;border-radius:10px}.fee-distribution-cards small{color:#81958d;font-size:10px;letter-spacing:.1em}.fee-distribution-cards b{font-size:22px;line-height:1.3;font-variant-numeric:tabular-nums;color:var(--ink)}.fee-distribution-cards span{color:var(--muted);font-size:11px;line-height:1.5}.fee-distribution-note{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.6}@media(max-width:900px){.fee-distribution-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:380px){.fee-distribution-cards b{font-size:19px}.fee-distribution-cards>div{padding:12px}}
 .owner-rotate-input{flex:1 1 320px;min-width:0;min-height:32px;padding:0 11px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:inherit;font:inherit;font-size:11px}
 .owner-rotate-input:focus{outline:2px solid var(--green);outline-offset:1px}
+
+/* $HYMET Burn Tracker: one large total burned panel, larger type throughout, history below. */
+.dashboard-burns .dashboard-section-heading{align-items:flex-start}
+.dashboard-burns .dashboard-section-heading h2{font-size:clamp(20px,2.4vw,24px)}
+.dashboard-burns .dashboard-section-heading div>span{font-size:14px}
+.dashboard-burns .dashboard-section-heading>span{color:var(--dash-teal);font-size:12px;white-space:nowrap}
+.burn-total{display:grid;justify-items:center;gap:14px;padding:clamp(30px,5vw,56px) clamp(16px,4vw,32px);border:1px solid #1f4a3f;border-radius:14px;background:radial-gradient(120% 150% at 50% 0%,#0e2a23 0%,#08120f 62%);text-align:center;box-shadow:inset 0 1px 0 #36ddb914}
+.burn-total-label{color:var(--dash-muted);font-size:14px;font-weight:620;letter-spacing:.16em;text-transform:uppercase}
+.burn-total-value{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:.25em .35em;max-width:100%;color:var(--dash-text);font-size:clamp(40px,7.4vw,84px);font-weight:680;line-height:1.02;letter-spacing:-.045em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.burn-total-value em{color:var(--dash-teal);font-size:.4em;font-style:normal;font-weight:640;letter-spacing:.04em}
+.burn-total-value.burn-total-empty{color:#80958d;font-size:clamp(28px,4.5vw,40px);letter-spacing:-.02em}
+.burn-total-caption{color:#9db3aa;font-size:15px;line-height:1.55}
+.dashboard-burns .dashboard-burn-list{margin-top:20px}
+.dashboard-burns .dashboard-burn-list article{min-height:62px;padding:12px 4px;font-size:15px}
+.dashboard-burns .dashboard-burn-list .dashboard-history-type{font-size:15px}
+.dashboard-burns .dashboard-burn-list .dashboard-history-token{font-size:17px;font-weight:620;font-variant-numeric:tabular-nums}
+.dashboard-burns .dashboard-burn-list time,.dashboard-burns .dashboard-burn-list a:last-child{font-size:15px}
+.dashboard-burns .dashboard-earnings-note{margin-top:16px;font-size:14px;line-height:1.65}
+@media(max-width:680px){.dashboard-burns .dashboard-section-heading{flex-direction:column;gap:8px}.dashboard-burns .dashboard-section-heading>span{white-space:normal}.burn-total-caption{font-size:14px}.dashboard-burns .dashboard-burn-list article{grid-template-columns:minmax(0,1fr) auto;gap:6px 14px}.dashboard-burns .dashboard-burn-list .dashboard-history-type{grid-column:1/-1;color:var(--dash-teal);font-size:13px}.dashboard-burns .dashboard-burn-list .dashboard-history-token{white-space:normal}.dashboard-burns .dashboard-burn-list time{grid-column:1;font-size:14px}.dashboard-burns .dashboard-burn-list a:last-child{grid-column:2;grid-row:2/4;align-self:center}}

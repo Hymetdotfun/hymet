@@ -85,27 +85,21 @@ export function BurnTracker() {
         </div>
         <span>{label}</span>
       </div>
-      <div className="dashboard-metrics">
-        <article>
-          <span>Total burned</span>
-          <strong title={exact(shown?.burnedRaw)}>{shown ? tokens(shown.burnedRaw) : emptyValue}</strong>
-          <small>All confirmed on-chain burns</small>
-        </article>
-        <article>
-          <span>Of original supply</span>
-          <strong>{shown?.burnedPercent ? `${shown.burnedPercent}%` : emptyValue}</strong>
-          <small>of 1,000,000,000 HYMET minted at launch</small>
-        </article>
-        <article>
-          <span>Team buyback burns</span>
-          <strong title={exact(shown?.team?.burnedRaw)}>{shown?.team ? tokens(shown.team.burnedRaw) : emptyValue}</strong>
-          <small>{shown?.team ? `${shown.team.count} ${shown.team.count === 1 ? "burn" : "burns"} by the HYMET team wallet` : "Burns by the HYMET team wallet"}</small>
-        </article>
-        <article>
-          <span>Other on-chain burns</span>
-          <strong title={exact(shown?.other?.burnedRaw)}>{shown?.other ? tokens(shown.other.burnedRaw) : emptyValue}</strong>
-          <small>{shown?.other ? `${shown.other.count} ${shown.other.count === 1 ? "burn" : "burns"} by any other wallet` : "Burns by any other wallet"}</small>
-        </article>
+      <div className="burn-total" title={exact(shown?.burnedRaw)}>
+        <span className="burn-total-label">Total Burned</span>
+        {shown?.burnedRaw && /^\d+$/.test(shown.burnedRaw) ? (
+          <strong className="burn-total-value">
+            {formatTokens(BigInt(shown.burnedRaw))}
+            <em>HYMET</em>
+          </strong>
+        ) : (
+          <strong className="burn-total-value burn-total-empty">{emptyValue}</strong>
+        )}
+        <small className="burn-total-caption">
+          {shown?.burnCount !== undefined
+            ? `All confirmed on-chain burns · ${shown.burnCount} ${shown.burnCount === 1 ? "burn" : "burns"} · updated ${utcTime(shown.updatedAt)}`
+            : "All confirmed on-chain burns"}
+        </small>
       </div>
       {shown?.recent?.length ? (
         <div className="dashboard-history-list dashboard-burn-list">
