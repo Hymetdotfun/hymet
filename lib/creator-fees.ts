@@ -473,13 +473,66 @@ export async function signCreatorClaim(
     );
   return { signed, record: r };
 }
+/**
+ * Gives a reviewed claim the network's latest blockhash just before Phantom signs, so the time a review stays open never
+ * expires the claim. Only the blockhash may change: every other byte of the message must equal the reviewed message, so
+ * the accounts, amounts, compute budget and therefore the fee stay exactly as reviewed (signCreatorClaim re-checks the
+ * signed fee). The reviewed plan itself is left untouched.
+ */
+export async function refreshClaimBlockhash(c: Connection, plan: ClaimPlan): Promise<ClaimPlan> {
+  const reviewed = Buffer.from(plan.message, "base64");
+  if (!Buffer.from(plan.tx.serializeMessage()).equals(reviewed)) throw Error("Claim changed after review");
+  // A claim that already carries a signature is never re-signed: signCreatorClaim refuses it unchanged.
+  if (plan.tx.signatures.some((s) => s.signature !== null)) return plan;
+  const block = await c.getLatestBlockhash("confirmed");
+  const tx = new Transaction({
+    feePayer: plan.tx.feePayer,
+    blockhash: block.blockhash,
+    lastValidBlockHeight: block.lastValidBlockHeight,
+  }).add(...plan.tx.instructions);
+  const message = Buffer.from(tx.serializeMessage());
+  const comparable = Message.from(message);
+  comparable.recentBlockhash = Message.from(reviewed).recentBlockhash;
+  if (!Buffer.from(comparable.serialize()).equals(reviewed))
+    throw Error("Claim changed while refreshing its blockhash; review again");
+  return { ...plan, tx, message: message.toString("base64"), lastValidBlockHeight: block.lastValidBlockHeight };
+}
+
+/**
+ * A signed claim this launcher never sent, whose blockhash expired while Phantom was open: once the finalized block
+ * height passes its last valid height and the network has no record of the signature, it can never land, so the journal
+ * marks it expired and a fresh claim can be signed. Returns false (leaving it pending) if that cannot be shown in time.
+ */
+export async function settleUnsentExpiredClaim(c: Connection, storage: Store, r: ClaimRecord, attempts = 20, delayMs = 1500) {
+  for (let i = 0; i < attempts; i++) {
+    if ((await c.getBlockHeight("finalized")) > r.lastValidBlockHeight) {
+      const status = (await c.getSignatureStatuses([r.signature], { searchTransactionHistory: true })).value[0];
+      if (status) return false;
+      saveClaim(storage, { ...r, state: "expired" });
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
+}
+
+/** Thrown when Phantom returns a signed claim after its blockhash expired. Nothing was sent. */
+export function approvalExpiredError(settled: boolean) {
+  return Error(
+    `Phantom approval took longer than the claim's validity window (about one minute), so the signed claim expired before sending. Nothing was sent. ${
+      settled ? "Confirm again to sign a fresh claim." : "Use Check claim signature & refresh in a moment, then confirm again."
+    }`,
+  );
+}
+
 export async function executeCreatorClaim(
   c: Connection,
-  plan: ClaimPlan,
+  reviewedPlan: ClaimPlan,
   wallet: PublicKey,
   sign: (tx: Transaction) => Promise<Transaction>,
   storage: Store,
 ) {
+  let plan = reviewedPlan;
   if (plan.view.network === "mainnet-beta") assertMainnetTransactionsEnabled();
   if (plan.wallet !== wallet.toBase58())
     throw Error("Wallet changed; review the claim again");
@@ -497,8 +550,8 @@ export async function executeCreatorClaim(
     latest.quote < plan.view.quote
   )
     throw Error("Fee accounts or balances changed; refresh and review again");
-  if ((await c.getBlockHeight("confirmed")) > plan.lastValidBlockHeight)
-    throw Error("Blockhash expired; prepare a new review before signing");
+  // Every attempt signs with the network's latest blockhash, however long ago the review was prepared.
+  plan = await refreshClaimBlockhash(c, plan);
   const wrappedAddress = new PublicKey(plan.destinations[1]);
   const wrappedInfo = await c.getAccountInfo(wrappedAddress, "confirmed");
   const wrappedAmount =
@@ -519,6 +572,9 @@ export async function executeCreatorClaim(
     sign,
     storage,
   );
+  // A slow approval can outlast the blockhash: never send an expired claim, and clear it once it provably cannot land.
+  if ((await c.getBlockHeight("confirmed")) > plan.lastValidBlockHeight)
+    throw approvalExpiredError(await settleUnsentExpiredClaim(c, storage, r));
   await simulateReviewedTransaction(c, signed, true);
   saveClaim(storage, r); // Fail closed before any send; public signature survives timeout/refresh.
   const sent = await c.sendRawTransaction(signed.serialize(), {

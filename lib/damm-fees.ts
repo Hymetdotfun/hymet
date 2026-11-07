@@ -34,6 +34,9 @@ import {
 import {
   readCreatorFees,
   signCreatorClaim,
+  refreshClaimBlockhash,
+  settleUnsentExpiredClaim,
+  approvalExpiredError,
   claimRecord,
   saveClaim,
   assertNoPendingClaim,
@@ -507,19 +510,22 @@ export async function executeDammClaim(
     plan.claim.message
   )
     throw Error("DAMM review changed");
-  if ((await c.getBlockHeight("confirmed")) > plan.claim.lastValidBlockHeight)
-    throw Error("Blockhash expired; review again");
+  // Every attempt signs with the network's latest blockhash, however long ago the review was prepared.
+  const claim = await refreshClaimBlockhash(c, plan.claim);
   const store = journal(storage, {
     position: plan.position.position,
-    message: plan.claim.message,
+    message: claim.message,
   });
   const { signed, record } = await signCreatorClaim(
     c,
-    plan.claim,
+    claim,
     wallet,
     sign,
     store,
   );
+  // A slow approval can outlast the blockhash: never send an expired claim, and clear it once it provably cannot land.
+  if ((await c.getBlockHeight("confirmed")) > claim.lastValidBlockHeight)
+    throw approvalExpiredError(await settleUnsentExpiredClaim(c, store, record));
   await simulateReviewedTransaction(c, signed, true);
   const sent = await c.sendRawTransaction(signed.serialize(), {
     skipPreflight: false,

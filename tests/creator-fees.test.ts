@@ -14,6 +14,7 @@ import {
   Transaction,
   ComputeBudgetProgram,
   ComputeBudgetInstruction,
+  Message,
 } from "@solana/web3.js";
 import {
   DynamicBondingCurveClient,
@@ -33,6 +34,7 @@ import {
   prepareCreatorClaim,
   executeCreatorClaim,
   refreshClaim,
+  refreshClaimBlockhash,
   claimRecord,
   saveClaim,
   assertNoPendingClaim,
@@ -280,26 +282,103 @@ it("records a signature before ambiguous send, refuses duplicates, and refreshes
   expect(result.view!.quote).toBe(0n);
   expect(send).toHaveBeenCalledTimes(1);
 });
-it("requires wallet approval and refuses expired review without sending", async () => {
+it("requires wallet approval and signs an old review with a fresh blockhash, changing nothing else", async () => {
   const { c, state, update, send } = setup(),
     wallet = Keypair.generate(),
     s = store();
   state.poolState.creator = wallet.publicKey;
   await update();
+  const offered: Transaction[] = [];
   const plan = await prepareCreatorClaim(c, "devnet", pool, wallet.publicKey),
-    reject = vi.fn(async () => {
+    reject = vi.fn(async (tx: Transaction) => {
+      offered.push(tx);
       throw Error("Wallet rejected");
     });
   await expect(
     executeCreatorClaim(c, plan, wallet.publicKey, reject, s),
   ).rejects.toThrow("Wallet rejected");
   expect(send).not.toHaveBeenCalled();
+  // The review's blockhash (valid to height 100) has expired: the next attempt gets the latest one instead of failing.
   vi.mocked(c.getBlockHeight).mockResolvedValue(101);
+  const latest = Keypair.generate().publicKey.toBase58();
+  vi.mocked(c.getLatestBlockhash).mockResolvedValue({ blockhash: latest, lastValidBlockHeight: 250 });
   await expect(
     executeCreatorClaim(c, plan, wallet.publicKey, reject, s),
-  ).rejects.toThrow("expired");
-  expect(reject).toHaveBeenCalledTimes(1);
+  ).rejects.toThrow("Wallet rejected");
+  expect(reject).toHaveBeenCalledTimes(2);
+  expect(offered[1].recentBlockhash).toBe(latest);
+  const comparable = Message.from(offered[1].serializeMessage());
+  comparable.recentBlockhash = plan.tx.recentBlockhash!;
+  expect(Buffer.from(comparable.serialize()).toString("base64")).toBe(plan.message);
+  expect(plan.tx.recentBlockhash).not.toBe(latest);
+  expect(send).not.toHaveBeenCalled();
   expect(claimRecord(s, "devnet", wallet.publicKey.toBase58())).toBeUndefined();
+});
+it("refreshes only the blockhash of a reviewed claim and refuses a claim that changed after review", async () => {
+  const { c, state, update } = setup(),
+    wallet = Keypair.generate();
+  state.poolState.creator = wallet.publicKey;
+  await update();
+  const plan = await prepareCreatorClaim(c, "devnet", pool, wallet.publicKey);
+  const latest = Keypair.generate().publicKey.toBase58();
+  vi.mocked(c.getLatestBlockhash).mockResolvedValue({ blockhash: latest, lastValidBlockHeight: 400 });
+  const fresh = await refreshClaimBlockhash(c, plan);
+  expect(fresh.tx.recentBlockhash).toBe(latest);
+  expect(fresh.lastValidBlockHeight).toBe(400);
+  expect([fresh.fee, fresh.rent, fresh.destinations]).toEqual([plan.fee, plan.rent, plan.destinations]);
+  expect(fresh.message).not.toBe(plan.message);
+  expect(plan.lastValidBlockHeight).toBe(100);
+  plan.tx.instructions.pop();
+  await expect(refreshClaimBlockhash(c, plan)).rejects.toThrow("Claim changed after review");
+});
+it("never sends a claim whose blockhash expired during a slow approval, and clears it once it cannot land", async () => {
+  const { c, state, update, send } = setup(),
+    wallet = Keypair.generate(),
+    s = store();
+  state.poolState.creator = wallet.publicKey;
+  await update();
+  const plan = await prepareCreatorClaim(c, "devnet", pool, wallet.publicKey);
+  vi.mocked(c.getSignatureStatuses).mockResolvedValue({ context: { slot: 1 }, value: [null] });
+  const slow = vi.fn(async (tx: Transaction) => {
+    tx.partialSign(wallet);
+    vi.mocked(c.getBlockHeight).mockResolvedValue(101); // Approval outlasted the blockhash, valid to height 100.
+    return tx;
+  });
+  await expect(
+    executeCreatorClaim(c, plan, wallet.publicKey, slow, s),
+  ).rejects.toThrow("Nothing was sent. Confirm again to sign a fresh claim.");
+  expect(send).not.toHaveBeenCalled();
+  expect(claimRecord(s, "devnet", wallet.publicKey.toBase58())!.state).toBe("expired");
+  // Nothing blocks the next attempt, which signs with a fresh blockhash and reaches the network.
+  vi.mocked(c.getBlockHeight).mockResolvedValue(150);
+  vi.mocked(c.getLatestBlockhash).mockResolvedValue({ blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 300 });
+  const quick = vi.fn(async (tx: Transaction) => {
+    tx.partialSign(wallet);
+    return tx;
+  });
+  await expect(
+    executeCreatorClaim(c, plan, wallet.publicKey, quick, s),
+  ).rejects.toThrow("ambiguous");
+  expect(quick).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+it("keeps a slow-approval claim pending when the network has a record of its signature", async () => {
+  const { c, state, update, send } = setup(),
+    wallet = Keypair.generate(),
+    s = store();
+  state.poolState.creator = wallet.publicKey;
+  await update();
+  const plan = await prepareCreatorClaim(c, "devnet", pool, wallet.publicKey);
+  const slow = vi.fn(async (tx: Transaction) => {
+    tx.partialSign(wallet);
+    vi.mocked(c.getBlockHeight).mockResolvedValue(101);
+    return tx;
+  });
+  await expect(
+    executeCreatorClaim(c, plan, wallet.publicKey, slow, s),
+  ).rejects.toThrow("Check claim signature & refresh");
+  expect(send).not.toHaveBeenCalled();
+  expect(claimRecord(s, "devnet", wallet.publicKey.toBase58())!.state).toBe("pending");
 });
 it.each([100, 101])(
   "resolves unknown claims only after finalized expiry at %s",

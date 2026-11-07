@@ -12,6 +12,7 @@ import { convertIdlToCamelCase } from "@coral-xyz/anchor/dist/cjs/idl";
 import {
   Connection,
   Keypair,
+  Message,
   PublicKey,
   Transaction,
   TransactionMessage,
@@ -488,7 +489,23 @@ it("refuses modified wallet messages and retains their valid signature for inspe
   ).toBe(false);
   expect(x.send).not.toHaveBeenCalled();
 });
-it("fails closed for simulation errors, unavailable fees, expired blocks and incorrect network before signing", async () => {
+it("signs an old DAMM review with a fresh blockhash, changing nothing else", async () => {
+  const x = await setup();
+  const plan = await prepareDammClaim(x.c, "devnet", x.dbcPool, x.position.toBase58(), x.wallet.publicKey);
+  // The review's blockhash (valid to height 100) has expired by the time the creator confirms.
+  vi.mocked(x.c.getBlockHeight).mockResolvedValue(101);
+  const latest = Keypair.generate().publicKey.toBase58();
+  vi.mocked(x.c.getLatestBlockhash).mockResolvedValue({ blockhash: latest, lastValidBlockHeight: 250 });
+  await executeDammClaim(x.c, plan, x.wallet.publicKey, x.sign, x.s).catch(() => undefined);
+  expect(x.sign).toHaveBeenCalledTimes(1);
+  const offered = x.sign.mock.calls[0][0];
+  expect(offered.recentBlockhash).toBe(latest);
+  const comparable = Message.from(offered.serializeMessage());
+  comparable.recentBlockhash = plan.claim.tx.recentBlockhash!;
+  expect(Buffer.from(comparable.serialize()).toString("base64")).toBe(plan.claim.message);
+  expect(plan.claim.tx.recentBlockhash).not.toBe(latest);
+});
+it("fails closed for simulation errors, unavailable fees and incorrect network before signing", async () => {
   const x = await setup();
   x.simulation.mockResolvedValueOnce({
     context: { slot: 1 },
@@ -516,17 +533,6 @@ it("fails closed for simulation errors, unavailable fees, expired blocks and inc
       x.wallet.publicKey,
     ),
   ).rejects.toThrow("fee unavailable");
-  const plan = await prepareDammClaim(
-    x.c,
-    "devnet",
-    x.dbcPool,
-    x.position.toBase58(),
-    x.wallet.publicKey,
-  );
-  vi.mocked(x.c.getBlockHeight).mockResolvedValue(101);
-  await expect(
-    executeDammClaim(x.c, plan, x.wallet.publicKey, x.sign, x.s),
-  ).rejects.toThrow("expired");
   await expect(
     readDammPositions(x.c, "mainnet-beta", x.dbcPool, x.wallet.publicKey),
   ).rejects.toThrow();
