@@ -26,6 +26,20 @@ it("excludes exact server-configured mints in the public listing query", async (
   expect(sql).not.toContain("name NOT IN");
 });
 
+it("always includes the official token in the listed 100, ahead of newer launches", async () => {
+  queryMock.mockClear();
+  queryMock.mockResolvedValue({ rows: [] });
+  const { OFFICIAL_TOKEN_MINT } = await import("../lib/token-directory");
+  const { GET } = await import("../app/api/tokens/route");
+  await GET();
+  const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+
+  expect(sql).toContain("ORDER BY (t.mint_address = $3) DESC, t.created_at DESC LIMIT 100");
+  expect(params[2]).toBe(OFFICIAL_TOKEN_MINT);
+  // Exclusions still win: an excluded mint is filtered before ordering.
+  expect(sql).toContain("AND NOT (t.mint_address = ANY($2::text[]))");
+});
+
 it("keeps exact creator DBC lookup available for excluded launches", async () => {
   queryMock.mockResolvedValue({
     rows: [{

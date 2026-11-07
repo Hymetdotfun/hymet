@@ -1190,6 +1190,18 @@ header.app-header{display:none!important}.launch-shell{max-width:1280px;margin:a
 @media(max-width:380px){.token-directory .token-grid{grid-template-columns:minmax(0,1fr)}.token-card-content{gap:13px;padding:14px}.token-card-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}}
 @media(prefers-reduced-motion:reduce){.token-directory .token-card,.token-directory .token-card .card-arrow{transition:none}.token-skeleton-art{animation:none}}
 
+/* $HYMET, the official token: pinned first, with a turquoise/emerald ring that carries a slow moving light. */
+@property --official-orbit{syntax:"<angle>";inherits:false;initial-value:0deg}
+.token-directory .token-card.token-card-official{border-color:#1f5446;background:#08110e;box-shadow:0 0 0 1px #36ddb922,0 0 26px -8px #36ddb975,0 0 48px -20px #10b981a6}
+.token-directory .token-card.token-card-official::before{content:"";position:absolute;inset:0;z-index:2;padding:1.5px;border-radius:inherit;background:conic-gradient(from var(--official-orbit),#10b98140 0deg,#10b98140 200deg,#2dd4bf 258deg,#d4fff4 286deg,#34d399 314deg,#10b98140 360deg);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none;animation:official-orbit 7s linear infinite}
+.token-directory .token-card.token-card-official:hover,.token-directory .token-card.token-card-official:focus-visible{border-color:#36ddb980;background:#0a1612;box-shadow:0 0 0 1px #36ddb94d,0 0 32px -6px #36ddb999,0 0 58px -20px #10b981cc}
+@keyframes official-orbit{to{--official-orbit:360deg}}
+.official-flags{position:absolute;top:9px;left:9px;z-index:1;display:flex;align-items:center;gap:5px;max-width:calc(100% - 18px)}
+.official-badge{padding:5px 8px;border-radius:999px;background:linear-gradient(100deg,#5eead4,#34d399);color:#03140f;font-size:9px;font-weight:760;letter-spacing:.12em;line-height:1;white-space:nowrap;box-shadow:0 0 14px -3px #36ddb9b3}
+.pinned-indicator{display:grid;flex:none;width:21px;height:21px;place-items:center;border:1px solid #36ddb966;border-radius:50%;background:#050907d9;color:#8debd4}
+.pinned-indicator svg{width:11px;height:11px}
+@media(prefers-reduced-motion:reduce){.token-directory .token-card.token-card-official::before{animation:none}}
+
 /* Shared navbar surface blends into each page while retaining sticky blur. */
 .site-frame>.site-header{background:transparent;border-bottom:0;box-shadow:none}
 .site-mark{display:block;flex:none;object-fit:contain;background:transparent;border-radius:0;box-shadow:none;color:inherit;font-size:0}

@@ -7,6 +7,7 @@ import { publicTokenExcludedMints } from "../../../lib/public-token-exclusions";
 import { serverRpcUrl } from "../../../lib/app-network";
 import { allocationFromBps } from "../../../lib/hymet-policy";
 import { syncGraduation } from "../../../lib/graduation";
+import { OFFICIAL_TOKEN_MINT } from "../../../lib/token-directory";
 export const runtime = "nodejs";
 const fmt = (n?: number) => (n === undefined || !Number.isFinite(n) ? undefined : new Intl.NumberFormat("en-US", { maximumSignificantDigits: 4 }).format(n));
 // The feed reads the chain on every build, and any visitor can request it: share one result across visitors for a few seconds.
@@ -37,8 +38,9 @@ async function directory() {
               (SELECT p.protocol FROM pools p WHERE p.mint_address=t.mint_address AND p.status IN ('active','migrated') ORDER BY CASE WHEN p.protocol='meteora_damm_v2' THEN 0 ELSE 1 END LIMIT 1) AS protocol
          FROM tokens t WHERE t.quote_mint = $1 AND t.status IN ('bonding','graduating','graduated')
           AND NOT (t.mint_address = ANY($2::text[]))
-        ORDER BY t.created_at DESC LIMIT 100`,
-      [HYPE_MINT.toBase58(), publicTokenExcludedMints()],
+        ORDER BY (t.mint_address = $3) DESC, t.created_at DESC LIMIT 100`,
+      // The official token sorts ahead of the limit, so newer launches never push it out of the 100.
+      [HYPE_MINT.toBase58(), publicTokenExcludedMints(), OFFICIAL_TOKEN_MINT],
     );
     const pools = result.rows.filter((r) => r.pool && r.protocol).map((r) => ({ mint: r.mint, pool: r.pool!, protocol: r.protocol! }));
     let metrics = new Map<string, { volume24hHype?: number; liquidityHype?: number; liquidityUsd?: number; priceHype?: number; marketCapUsd?: number; dbcMigrated?: boolean }>();

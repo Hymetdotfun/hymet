@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { isOfficialToken, orderDirectory } from "../lib/token-directory";
 
 type Token = {
   mint: string;
@@ -48,6 +49,62 @@ function marketCap(value?: number) {
   }).format(value);
 }
 
+/** One Explore card. The official token gets the pinned treatment; its market data is shown exactly like any other card's. */
+export function TokenCard({ token }: { token: Token }) {
+  const official = isOfficialToken(token.mint);
+  return (
+    <Link
+      className={official ? "token-card token-card-official" : "token-card"}
+      data-official={official ? "true" : undefined}
+      href={`/token/${encodeURIComponent(token.mint)}`}
+      aria-label={official ? `View ${token.name} token, the official HYMET token, pinned` : `View ${token.name} token`}
+    >
+      <div className="token-card-artwork">
+        <TokenArtwork src={token.imageUrl} name={token.name} />
+        {official && (
+          <span className="official-flags" aria-hidden="true">
+            <span className="official-badge">OFFICIAL</span>
+            <span className="pinned-indicator" title="Pinned">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z" />
+                <path d="M12 14v7" />
+              </svg>
+            </span>
+          </span>
+        )}
+        <span className="launch-status" data-status={token.status}>
+          {token.status === "bonding"
+            ? "On the curve"
+            : token.status === "graduated"
+              ? "Graduated"
+              : token.status}
+        </span>
+      </div>
+      <div className="token-card-content">
+        <div className="token-card-title">
+          <strong>{token.name}</strong>
+          <span>{token.ticker} / HYPE · {token.mint.slice(0, 4)}…{token.mint.slice(-4)}</span>
+        </div>
+        <div className="token-card-metrics">
+          <div>
+            <span>Market cap · USD</span>
+            <strong className={typeof token.marketCapUsd === "number" && Number.isFinite(token.marketCapUsd) && token.marketCapUsd >= 0 ? undefined : "unavailable"}>
+              {marketCap(token.marketCapUsd)}
+            </strong>
+          </div>
+          <div>
+            <span>24h volume · HYPE</span>
+            <strong className={token.volume24hHype ? undefined : "unavailable"}>
+              {token.volume24hHype || "Unavailable"}
+            </strong>
+          </div>
+        </div>
+      </div>
+      <span className="card-arrow" aria-hidden="true">↗</span>
+    </Link>
+  );
+}
+
 export function TokenFeed({ compact = false, emptyVariant = "default" }: { compact?: boolean; emptyVariant?: "default" | "explore" }) {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -75,19 +132,8 @@ export function TokenFeed({ compact = false, emptyVariant = "default" }: { compa
     return () => controller.abort();
   }, [attempt]);
 
-  const filtered = tokens
-    .filter(
-      (token) =>
-        (status === "all" || token.status === status) &&
-        `${token.name} ${token.ticker} ${token.mint}`
-          .toLowerCase()
-          .includes(search.trim().toLowerCase()),
-    )
-    .sort((a, b) =>
-      sort === "name"
-        ? a.name.localeCompare(b.name)
-        : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+  // The official token always leads; search and the status filter still apply to it.
+  const filtered = orderDirectory(tokens, { search, status, sort });
   const shown = compact ? filtered.slice(0, 5) : filtered;
 
   return (
@@ -184,44 +230,7 @@ export function TokenFeed({ compact = false, emptyVariant = "default" }: { compa
           )}
           <div className="token-grid">
             {shown.map((token) => (
-              <Link
-                className="token-card"
-                key={token.mint}
-                href={`/token/${encodeURIComponent(token.mint)}`}
-                aria-label={`View ${token.name} token`}
-              >
-                <div className="token-card-artwork">
-                  <TokenArtwork src={token.imageUrl} name={token.name} />
-                  <span className="launch-status" data-status={token.status}>
-                    {token.status === "bonding"
-                      ? "On the curve"
-                      : token.status === "graduated"
-                        ? "Graduated"
-                        : token.status}
-                  </span>
-                </div>
-                <div className="token-card-content">
-                  <div className="token-card-title">
-                    <strong>{token.name}</strong>
-                    <span>{token.ticker} / HYPE · {token.mint.slice(0, 4)}…{token.mint.slice(-4)}</span>
-                  </div>
-                  <div className="token-card-metrics">
-                    <div>
-                      <span>Market cap · USD</span>
-                      <strong className={typeof token.marketCapUsd === "number" && Number.isFinite(token.marketCapUsd) && token.marketCapUsd >= 0 ? undefined : "unavailable"}>
-                        {marketCap(token.marketCapUsd)}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>24h volume · HYPE</span>
-                      <strong className={token.volume24hHype ? undefined : "unavailable"}>
-                        {token.volume24hHype || "Unavailable"}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-                <span className="card-arrow" aria-hidden="true">↗</span>
-              </Link>
+              <TokenCard key={token.mint} token={token} />
             ))}
           </div>
         </>
