@@ -23,8 +23,8 @@ type DocsGroup = { name: string; articles: DocsArticle[] };
 const launchesOpen = process.env.NEXT_PUBLIC_ENABLE_MAINNET === "true";
 
 const FEE_FLOW = ["Trading Fee", "Meteora Share", "Distributable Fees", "20% HYMET", "80% Creator & Holders"];
-const BUYBACK_FLOW = ["Trading Activity", "Distributable Fees", "20% HYMET Allocation", "$HYMET Buyback", "Token Burn"];
-const BUYBACK_POLICY = "HYMET designates 100% of its 20% platform allocation for the Buyback & Burn of $HYMET. The intended use is to collect platform revenue, purchase $HYMET, and burn the purchased tokens. This is an allocation policy: buybacks and burns are not automated, and this documentation does not claim that any purchase, burn, schedule, or supply reduction has taken place.";
+const BUYBACK_FLOW = ["Trading Activity", "Distributable Fees", "20% HYMET Allocation", "Manual $HYMET Buyback", "Manual Burn"];
+const BUYBACK_POLICY = "HYMET designates 100% of its 20% platform allocation for the Buyback & Burn of $HYMET. The intended use is to collect platform revenue, purchase $HYMET, and burn the purchased tokens. This is an allocation policy carried out manually by HYMET: no part of the app, keeper or distributor program buys or burns $HYMET automatically, and this documentation does not claim that any purchase, burn, schedule, or supply reduction has taken place.";
 
 const article = (
   slug: string,
@@ -197,7 +197,7 @@ export const docsGroups: DocsGroup[] = [
           "How do creators get paid? In a launch with a holder share, the creator claims on the Fees & Rewards page. Payout minimums do not apply to creator claims.",
           "What happens to fees after graduation? They continue under the same split. This path has been validated on Devnet and a local validator, not yet on Mainnet.",
           "Does reaching the curve threshold mean migration is finished? No. HYMET reports a verified migration only after checking on-chain destination state.",
-          "Are HYMET buybacks and burns already operating? They are not automated, and this documentation does not claim that any have taken place. The platform allocation is designated for that intended use.",
+          "Are HYMET buybacks and burns already operating? They are manual, not automated, and this documentation does not claim that any have taken place. The platform allocation is designated for that intended use.",
           "Has the distributor been audited? It has an internal security review and a reproducible build, but no external audit yet.",
         ] },
       ]),
